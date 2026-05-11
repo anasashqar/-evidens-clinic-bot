@@ -1,0 +1,1 @@
+ALTER TABLE "appointments" ADD COLUMN "preferred_period" varchar(255);
