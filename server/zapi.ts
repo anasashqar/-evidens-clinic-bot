@@ -178,17 +178,17 @@ export async function notifyEliana(params: {
   }
 
   const message = `
-🔔 *Novo Atendimento - EviDenS Clinic*
+🔔 *طلب جديد - عيادة الأمل*
 
-👤 *Paciente:* ${params.patientName}
-📱 *Telefone:* ${params.patientPhone}
+👤 *المريض:* ${params.patientName}
+📱 *الهاتف:* ${params.patientPhone}
 
-📋 *Resumo da Conversa:*
+📋 *ملخص المحادثة:*
 ${params.summary}
 
-${params.doctor ? `👨‍⚕️ *Médico Escolhido:* ${params.doctor}\n` : ''}${params.preferredPeriod ? `🕐 *Preferência de Horário:* ${params.preferredPeriod}\n` : ''}${params.appointmentType ? `📝 *Tipo:* ${params.appointmentType}\n` : ''}
+${params.doctor ? `👨‍⚕️ *الطبيب المقترح:* ${params.doctor}\n` : ''}${params.preferredPeriod ? `🕐 *تفضيل الوقت:* ${params.preferredPeriod}\n` : ''}${params.appointmentType ? `📝 *النوع:* ${params.appointmentType}\n` : ''}
 ---
-Por favor, entre em contato com o paciente para finalizar o agendamento.
+يرجى التواصل مع المريض لتأكيد الموعد.
   `.trim();
 
   return await sendMessage(elianaPhone, message);

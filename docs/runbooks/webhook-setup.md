@@ -1,91 +1,85 @@
-# Configuração do Webhook Z-API
+# إعداد Webhook الخاص بـ Z-API
 
-## URL do Webhook
+## رابط الويب (Webhook URL)
 
-Configure esta URL no painel do Z-API para receber mensagens:
+للمطورين الذين يعملون محلياً، يجب تشغيل نفق Ngrok للحصول على رابط عام:
+```bash
+ngrok http 3000
+```
+بعد تشغيل Ngrok، استخدم الرابط الناتج (مثلاً `https://xxxx.ngrok-free.app`) كقاعدة للرابط التالي:
 
 ```
-https://3000-iciqnf8wpwziykhd11w2j-e988ca58.manusvm.computer/api/trpc/webhook.zapi
+https://[رابط-نغروك]/api/webhook
 ```
 
-## Passos para Configurar no Z-API
+قم بضبط هذا الرابط في لوحة تحكم Z-API لاستلام الرسائل.
 
-1. Acesse o painel do Z-API: https://api.z-api.io
-2. Faça login com suas credenciais
-3. Selecione sua instância: `3E84EFD39C80C1F284E266F3CD400517`
-4. Vá em **Webhooks** ou **Configurações**
-5. Cole a URL do webhook acima no campo apropriado
-6. Salve as configurações
+## خطوات الإعداد في Z-API
 
-## Eventos a Serem Configurados
+1. ادخل إلى لوحة تحكم Z-API: https://api.z-api.io
+2. سجل الدخول باستخدام بياناتك.
+3. اختر النسخة (Instance) الخاصة بك.
+4. اذهب إلى قسم **Webhooks** أو **Settings**.
+5. الصق رابط الويب (Webhook URL) الموضح أعلاه في الحقل المخصص.
+6. احفظ الإعدادات.
 
-Certifique-se de que os seguintes eventos estão habilitados:
+## الأحداث المطلوبة تفعيلها (Events)
 
-- ✅ **Mensagens recebidas** (message-received)
-- ✅ **Mensagens de texto** (text)
-- ✅ **Mensagens de imagem** (image) - opcional
-- ✅ **Mensagens de áudio** (audio) - opcional
+تأكد من تفعيل الأحداث التالية:
 
-## Testando o Webhook
+- ✅ **الرسائل المستلمة** (message-received)
+- ✅ **الرسائل النصية** (text)
+- ✅ **الرسائل الصورية** (image) - اختياري
+- ✅ **الرسائل الصوتية** (audio) - اختياري
 
-Após configurar o webhook:
+## اختبار Webhook
 
-1. Envie uma mensagem para o número do WhatsApp Business da clínica
-2. O bot deve responder automaticamente com a mensagem de boas-vindas
-3. Verifique o painel administrativo em: https://3000-iciqnf8wpwziykhd11w2j-e988ca58.manusvm.computer/
-4. A conversa deve aparecer na aba "Conversas"
+بعد إعداد الرابط:
 
-## Fluxo de Teste Completo
+1. أرسل رسالة إلى رقم واتساب الخاص بالعيادة.
+2. يجب أن يرد البوت تلقائياً برسالة ترحيب.
+3. تحقق من لوحة التحكم الإدارية في التطبيق.
+4. يجب أن تظهر المحادثة في تبويب "المحادثات" (Conversas/Conversations).
 
-### Teste 1: Novo Paciente (Primeira Consulta)
+## تدفق الاختبار الكامل
 
-1. Envie: "Olá"
-2. Bot responde com boas-vindas
-3. Digite: "1" (Primeira vez)
-4. Escolha uma opção de triagem (1-4)
-5. Escolha um médico (1 ou 2)
-6. Digite seu nome completo
-7. Escolha um período (1, 2 ou 3)
-8. Eliana deve receber uma notificação no WhatsApp
+### الاختبار 1: مريض جديد (أول استشارة)
 
-### Teste 2: Paciente Retornando (Procedimento)
+1. أرسل: "مرحباً"
+2. البوت يرد بالترحيب ويسأل إن كانت الزيارة الأولى.
+3. أجب بـ "نعم" أو ما يفيد بذلك.
+4. سيطلب البوت الاسم الكامل.
+5. حدد المشكلة (جلد، شعر، أظافر).
+6. اختر الطبيب أو الموعد المفضل.
+7. سيقوم البوت بإشعار "مريم" (المنسقة) عبر واتساب.
 
-1. Envie: "Olá"
-2. Bot responde com boas-vindas
-3. Digite: "2" (Já sou paciente)
-4. Eliana deve receber uma notificação imediatamente
+### الاختبار 2: مريض عائد
 
-## Troubleshooting
+1. أرسل: "أهلاً، أنا مريض سابق"
+2. البوت يتعرف على الحالة ويقوم بالتحويل المباشر للمنسقة إذا لزم الأمر.
 
-### Webhook não está recebendo mensagens
+## استكشاف الأخطاء (Troubleshooting)
 
-1. Verifique se a URL está correta no Z-API
-2. Certifique-se de que o servidor está rodando
-3. Verifique os logs do servidor para erros
+### الرابط لا يستلم رسائل:
+1. تأكد من صحة الرابط في Z-API.
+2. تأكد من أن الخادم يعمل (Running).
+3. افحص سجلات الخادم (Server logs) بحثاً عن أخطاء.
 
-### Bot não está respondendo
+### البوت لا يرد:
+1. تأكد من إعداد مفتاح Groq (`GROQ_API_KEY`).
+2. تأكد من اتصال قاعدة بيانات Supabase.
+3. افحص سجلات المتصفح إذا كنت تستخدم المحاكي (Simulator).
 
-1. Verifique as variáveis de ambiente (Settings → Secrets)
-2. Verifique se o Supabase está conectado
-3. Verifique os logs do navegador (F12 → Console)
+### المنسقة لا تستلم إشعارات:
+1. تأكد من صحة الرقم في متغير البيئة `ELIANA_PHONE_NUMBER`.
+2. تأكد من امتلاك Z-API صلاحية إرسال الرسائل.
 
-### Eliana não está recebendo notificações
+## لوحة التحكم الإدارية
 
-1. Verifique se o número da Eliana está correto: `5511973015859`
-2. Verifique se o Z-API tem permissão para enviar mensagens
-3. Verifique os logs do servidor
+يمكنك الوصول للوحة التحكم عبر رابط التطبيق الرئيسي:
 
-## Painel Administrativo
-
-Acesse o painel em: https://3000-iciqnf8wpwziykhd11w2j-e988ca58.manusvm.computer/
-
-**Funcionalidades:**
-
-- **Métricas**: Conversas hoje, handoffs, consultas próximas
-- **Handoffs**: Lista de transferências com botão para concluir
-- **Conversas**: Histórico completo com visualização de mensagens
-- **Agendamentos**: Lista de consultas e procedimentos
-
-## Suporte
-
-Para qualquer dúvida ou problema, entre em contato com o desenvolvedor.
+**الميزات:**
+- **المقاييس:** عدد المحادثات اليوم، التحويلات، المواعيد القادمة.
+- **التحويلات (Handoffs):** قائمة الحالات المحولة مع ملخص لكل حالة.
+- **المحادثات:** سجل كامل لكل المحادثات مع إمكانية عرض الرسائل.
+- **المواعيد:** قائمة المواعيد المجدولة.

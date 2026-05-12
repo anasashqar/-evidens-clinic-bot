@@ -1,45 +1,47 @@
-# Evidens Clinic Bot
+# بوت عيادة إيفيدنس (Evidens Clinic Bot)
 
-## Overview
-Evidens Clinic Bot is an AI-powered WhatsApp assistant for clinic intake, patient triage, scheduling support, and intelligent human handoff.
+## نظرة عامة
+بوت عيادة إيفيدنس هو مساعد واتساب ذكي مدعوم بالذكاء الاصطناعي، مصمم لتسهيل عملية استقبال المرضى، وتصنيف الحالات، ودعم الجدولة، والتحويل الذكي للموظفين البشريين.
 
-## Problem
-Clinics lose leads and overload staff when first-contact conversations, FAQs, and scheduling triage are handled manually.
+## المشكلة
+تعاني العيادات من ضياع الفرص (leads) وضغط العمل على الموظفين عندما يتم التعامل يدوياً مع كل المحادثات الأولية، والأسئلة الشائعة، وتنسيق المواعيد.
 
-## Solution
-This platform centralizes patient messaging, automates first response and qualification, and routes complex cases to human staff with context.
+## الحل
+تعمل هذه المنصة على تركيز رسائل المرضى، وأتمتة الرد الأول والتأهيل، وتوجيه الحالات المعقدة إلى الطاقم البشري مع ملخص كامل للسياق.
 
-## Architecture
-- `client/`: React frontend for dashboard and simulator views.
-- `server/`: Node.js API, bot orchestration, and integration endpoints.
-- `shared/`: shared types and cross-layer utilities.
-- `drizzle/`: schema and migration assets.
-- `docs/runbooks/`: operational setup notes.
+## الهيكلية التقنية (Architecture)
+- `client/`: واجهة أمامية React للوحة التحكم ونظام المحاكاة.
+- `server/`: محرك البوت المبني على Node.js، وإدارة المحادثات، ونقاط التكامل.
+- `shared/`: الأنواع (types) والأدوات المشتركة بين الواجهة والخلفية.
+- `drizzle/`: هيكلية قاعدة البيانات وملفات التهجير (migrations).
+- `docs/runbooks/`: ملاحظات التشغيل والإعداد.
 
-## Tech Stack
-- React + TypeScript + Vite
-- Node.js + Express + tRPC
-- Supabase + Drizzle ORM
-- OpenAI API and external messaging integrations
+## التقنيات المستخدمة
+- **الواجهة:** React + TypeScript + Vite
+- **الخلفية:** Node.js + Express + tRPC
+- **قاعدة البيانات:** Supabase (PostgreSQL) + Drizzle ORM
+- **الذكاء الاصطناعي:** Groq API (نموذج Llama-3.3-70b-versatile)
+- **التكامل:** Z-API (واتساب) و GoHighLevel (CRM)
 
-## Setup
-1. Install dependencies: `pnpm install`
-2. Copy env template: `cp .env.example .env`
-3. Run development server: `pnpm dev`
-4. Run type-check/tests: `pnpm check && pnpm test`
+## الإعداد (Setup)
+1. تثبيت الاعتمادات: `pnpm install`
+2. نسخ ملف البيئة: `cp .env.example .env` (تأكد من تعبئة مفاتيح Groq و Z-API)
+3. تشغيل نفق Ngrok (للمطورين): `ngrok http 3000` (ضروري لاستقبال رسائل الواتساب محلياً)
+4. تشغيل خادم التطوير: `pnpm dev`
+5. فحص الأنواع والاختبارات: `pnpm check && pnpm test`
 
-## Results
-- Faster first response for inbound WhatsApp leads.
-- Reduced repetitive scheduling and FAQ workload.
-- Better continuity between AI conversations and human handoff.
+## النتائج المتوقعة
+- استجابة فورية للرسائل الواردة عبر واتساب.
+- تقليل ضغط العمل المتكرر في الجدولة والرد على الأسئلة الشائعة.
+- استمرارية أفضل بين محادثات الذكاء الاصطناعي والتدخل البشري.
 
-## Screenshots
-Add production screenshots under `docs/screenshots/` and link them here.
+## لقطات الشاشة
+يمكن إضافة لقطات الشاشة في مجلد `docs/screenshots/` وربطها هنا.
 
-## Tradeoffs
-- AI quality depends on prompt/config tuning and operational guardrails.
-- Real-time integrations require strict credential and webhook reliability management.
+## اعتبارات تقنية
+- تعتمد جودة الذكاء الاصطناعي على ضبط "البرومبت" (Prompt) والقيود التشغيلية.
+- تتطلب عمليات التكامل في الوقت الفعلي إدارة دقيقة للهويات وموثوقية روابط الويب (Webhooks).
 
-## Additional Docs
-- Webhook setup: `docs/runbooks/webhook-setup.md`
-- Backlog notes: `docs/archive/todo.md`
+## وثائق إضافية
+- إعداد Webhook: `docs/runbooks/webhook-setup.md`
+- ملاحظات المهام القادمة: `docs/archive/todo.md`
