@@ -5,7 +5,8 @@
 
 const Z_API_INSTANCE = process.env.Z_API_INSTANCE || '';
 const Z_API_TOKEN = process.env.Z_API_TOKEN || '';
-const Z_API_BASE_URL = process.env.Z_API_BASE_URL || 'https://api.z-api.io';
+const Z_API_CLIENT_TOKEN = process.env.Z_API_CLIENT_TOKEN || ''; 
+const Z_API_BASE_URL = process.env.Z_API_BASE_URL || 'https://api.z-api.io'
 
 export interface ZApiMessage {
   phone: string;
@@ -78,6 +79,7 @@ export async function sendMessage(phone: string, message: string): Promise<boole
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Client-Token': Z_API_CLIENT_TOKEN // <-- تمت إضافته هنا ليسمح لنا بالمرور
       },
       body: JSON.stringify({
         phone: phone,
