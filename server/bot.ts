@@ -15,7 +15,7 @@ import {
   type Conversation,
   type Patient,
 } from './supabase';
-import { notifyEliana, sendMessage } from './zapi';
+import { notifyHandoffWithConfig as notifyEliana, sendMessageWithConfig as sendMessage } from './services/zapi.service';
 import { upsertGHLContact, addNoteToContact, getCalendarWidgetURL, getAvailableSlots } from './ghl';
 import { invokeLLM } from './_core/llm';
 

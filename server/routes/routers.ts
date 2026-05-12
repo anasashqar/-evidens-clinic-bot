@@ -20,11 +20,11 @@
  */
 
 import { COOKIE_NAME } from "@shared/const";
-import { getSessionCookieOptions } from "./_core/cookies";
-import { systemRouter } from "./_core/systemRouter";
-import { publicProcedure, router } from "./_core/trpc";
+import { getSessionCookieOptions } from "../_core/cookies";
+import { systemRouter } from "../_core/systemRouter";
+import { publicProcedure, router } from "../_core/trpc";
+import { handleIncomingMessage } from "../services/bot.engine";
 import { z } from "zod";
-import { handleIncomingMessage } from "./services/bot.engine";
 import {
   getAllWorkspaces,
   createWorkspace,
@@ -36,11 +36,11 @@ import {
   getConversationMessages,
   getWorkspaceHandoffs,
   updateHandoffStatus,
-} from "./db/workspace.queries";
+} from "../db/workspace.queries";
 import {
   extractMessageFromWebhook,
   type ZApiWebhookPayload,
-} from "./services/zapi.service";
+} from "../services/zapi.service";
 
 export const appRouter = router({
   system: systemRouter,
@@ -262,7 +262,8 @@ export const appRouter = router({
             getOrCreateWorkspacePatient,
             getActiveWorkspaceConversation,
             getConversationMessages,
-          } = await import("./db/workspace.queries");
+          } = await import("../db/workspace.queries");
+
 
           const patient = await getOrCreateWorkspacePatient(
             input.workspaceId,

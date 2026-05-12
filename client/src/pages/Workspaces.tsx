@@ -11,7 +11,7 @@
  */
 
 import { useState } from "react";
-import { trpc } from "../utils/trpc"; // عدّل المسار حسب مشروعك
+import { trpc } from "../lib/trpc"; // عدّل المسار حسب مشروعك
 import { useNavigate } from "react-router-dom";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────

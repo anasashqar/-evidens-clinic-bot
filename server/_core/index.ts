@@ -4,10 +4,9 @@ import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
-import { appRouter } from "../routers";
+import { appRouter } from "../routes/routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
-import { handleIncomingMessage } from "../bot"; // استدعاء البوت
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -36,33 +35,33 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
   // --- تمت إضافة نقطة استقبال واتساب (Webhook) هنا ---
-  app.post("/api/webhook", async (req, res) => {
-    try {
-      const payload = req.body;
+  // app.post("/api/webhook", async (req, res) => {
+  //   try {
+  //     const payload = req.body;
 
-      // نتأكد أن الرسالة من مريض (وليست من البوت نفسه أو من مجموعة)
-      if (!payload.fromMe && !payload.isGroup) {
-        const phone = payload.phone;
-        // استخراج نص الرسالة حسب هيكلية Z-API
-        const textMessage = payload.text?.message || payload.text || "";
+  //     // نتأكد أن الرسالة من مريض (وليست من البوت نفسه أو من مجموعة)
+  //     if (!payload.fromMe && !payload.isGroup) {
+  //       const phone = payload.phone;
+  //       // استخراج نص الرسالة حسب هيكلية Z-API
+  //       const textMessage = payload.text?.message || payload.text || "";
 
-        if (phone && typeof textMessage === "string" && textMessage.trim().length > 0) {
-          console.log(`[WhatsApp] رسالة جديدة من ${phone}: ${textMessage}`);
+  //       if (phone && typeof textMessage === "string" && textMessage.trim().length > 0) {
+  //         console.log(`[WhatsApp] رسالة جديدة من ${phone}: ${textMessage}`);
           
-          // تمرير الرسالة إلى البوت ليعالجها بالذكاء الاصطناعي (في الخلفية)
-          handleIncomingMessage(phone, textMessage, false).catch(err => {
-            console.error("[Bot Error] خطأ أثناء معالجة الرسالة:", err);
-          });
-        }
-      }
+  //         // تمرير الرسالة إلى البوت ليعالجها بالذكاء الاصطناعي (في الخلفية)
+  //         handleIncomingMessage(phone, textMessage, false).catch(err => {
+  //           console.error("[Bot Error] خطأ أثناء معالجة الرسالة:", err);
+  //         });
+  //       }
+  //     }
 
-      // يجب دائماً الرد بـ 200 لكي لا يقوم Z-API بإعادة الإرسال
-      res.status(200).send("OK");
-    } catch (error) {
-      console.error("[Webhook Error]:", error);
-      res.status(500).send("Error");
-    }
-  });
+  //     // يجب دائماً الرد بـ 200 لكي لا يقوم Z-API بإعادة الإرسال
+  //     res.status(200).send("OK");
+  //   } catch (error) {
+  //     console.error("[Webhook Error]:", error);
+  //     res.status(500).send("Error");
+  //   }
+  // });
   // ----------------------------------------------------
 
   // OAuth callback under /api/oauth/callback

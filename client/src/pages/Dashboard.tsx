@@ -165,7 +165,7 @@ export default function Dashboard() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {handoffs?.map((handoff) => (
+                    {handoffs?.map((handoff: any) => (
                       <TableRow key={handoff.id}>
                         <TableCell className="font-medium">
                           {handoff.patient_name || "Sem nome"}
@@ -220,7 +220,7 @@ export default function Dashboard() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {conversations?.map((conv) => (
+                    {conversations?.map((conv: any) => (
                       <TableRow key={conv.id}>
                         <TableCell className="font-medium">
                           {conv.patient_name || "Sem nome"}
@@ -266,7 +266,7 @@ export default function Dashboard() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {appointments?.map((appt) => (
+                    {appointments?.map((appt: any) => (
                       <TableRow key={appt.id}>
                         <TableCell className="font-medium">
                           {appt.patient_name || "Sem nome"}

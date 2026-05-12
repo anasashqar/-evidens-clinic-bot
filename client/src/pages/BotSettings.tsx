@@ -15,7 +15,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { trpc } from "../utils/trpc"; // عدّل المسار حسب مشروعك
+import { trpc } from "../lib/trpc"; // عدّل المسار حسب مشروعك
 
 // ─── Tab type ──────────────────────────────────────────────────────────────────
 
@@ -55,7 +55,7 @@ function ZApiTab({
 
   const saveMutation = trpc.admin.saveZapiConfig.useMutation({
     onSuccess: () => showToast("تم حفظ إعدادات Z-API بنجاح ✓", "success"),
-    onError: (e) => showToast(e.message, "error"),
+    onError: (e: { message: string }) => showToast(e.message, "error"),
   });
 
   const showToast = (msg: string, type: "success" | "error") => {
@@ -194,7 +194,7 @@ function PromptTab({
 
   const saveMutation = trpc.admin.saveBotSettings.useMutation({
     onSuccess: () => showToast("تم حفظ شخصية البوت بنجاح ✓", "success"),
-    onError: (e) => showToast(e.message, "error"),
+    onError: (e: { message: string }) => showToast(e.message, "error"),
   });
 
   const showToast = (msg: string, type: "success" | "error") => {
@@ -322,7 +322,7 @@ function HandoffTab({
 
   const saveMutation = trpc.admin.saveBotSettings.useMutation({
     onSuccess: () => showToast("تم حفظ إعدادات التحويل بنجاح ✓", "success"),
-    onError: (e) => showToast(e.message, "error"),
+    onError: (e: { message: string }) => showToast(e.message, "error"),
   });
 
   const showToast = (msg: string, type: "success" | "error") => {
