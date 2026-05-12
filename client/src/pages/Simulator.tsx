@@ -18,13 +18,16 @@ export default function Simulator() {
   const [currentMessage, setCurrentMessage] = useState("");
   const [messages, setMessages] = useState<SimulatedMessage[]>([]);
   const [isSimulating, setIsSimulating] = useState(false);
+  
+  const { data: workspaces } = trpc.admin.workspaces.useQuery();
+  const currentWorkspaceId = workspaces?.[0]?.workspace?.id || "";
 
   const simulateMessageMutation = trpc.admin.simulateMessage.useMutation();
   
   // Poll for new messages
   const { data: serverMessages, refetch } = trpc.admin.getSimulatorMessages.useQuery(
-    { phone: phoneNumber },
-    { enabled: isSimulating && !!phoneNumber, refetchInterval: 1000 }
+    { workspaceId: currentWorkspaceId, phone: phoneNumber },
+    { enabled: isSimulating && !!phoneNumber && !!currentWorkspaceId, refetchInterval: 1000 }
   );
 
   // Sync server messages with local state
@@ -74,6 +77,7 @@ export default function Simulator() {
 
     // Send to bot
     await simulateMessageMutation.mutateAsync({
+      workspaceId: currentWorkspaceId, // إضافة المتغير المطلوب
       phone: phoneNumber,
       message: messageToSend,
     });

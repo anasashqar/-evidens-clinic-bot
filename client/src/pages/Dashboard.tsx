@@ -22,10 +22,26 @@ import {
 } from "@/components/ui/dialog";
 
 export default function Dashboard() {
-  const { data: metrics, isLoading: metricsLoading } = trpc.admin.metrics.useQuery();
-  const { data: conversations } = trpc.admin.conversations.useQuery();
-  const { data: handoffs, refetch: refetchHandoffs } = trpc.admin.handoffs.useQuery();
-  const { data: appointments } = trpc.admin.appointments.useQuery();
+  // جلب مساحات العمل لاختيار أول مساحة عمل (أو يمكنك إضافة قائمة منسدلة لاحقاً لاختيار العميل)
+  const { data: workspaces } = trpc.admin.workspaces.useQuery();
+  const currentWorkspaceId = workspaces?.[0]?.workspace?.id || "";
+
+  // تحديث أسماء الروابط وتمرير workspaceId
+  const { data: metrics, isLoading: metricsLoading } = trpc.admin.workspaceMetrics.useQuery(
+    { workspaceId: currentWorkspaceId },
+    { enabled: !!currentWorkspaceId }
+  );
+  const { data: conversations } = trpc.admin.workspaceConversations.useQuery(
+    { workspaceId: currentWorkspaceId },
+    { enabled: !!currentWorkspaceId }
+  );
+  const { data: handoffs, refetch: refetchHandoffs } = trpc.admin.workspaceHandoffs.useQuery(
+    { workspaceId: currentWorkspaceId },
+    { enabled: !!currentWorkspaceId }
+  );
+  
+  // قم بإيقاف مسار المواعيد حالياً لأنه غير موجود في routers.ts
+  const appointments: any[] = []; // const { data: appointments } = trpc.admin.appointments.useQuery();
 
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const { data: messages } = trpc.admin.conversationMessages.useQuery(
@@ -92,7 +108,7 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {metricsLoading ? "..." : metrics?.total_conversations_today || 0}
+                {metricsLoading ? "..." : metrics?.totalConversations || 0}
               </div>
             </CardContent>
           </Card>
@@ -104,7 +120,7 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {metricsLoading ? "..." : metrics?.total_handoffs_today || 0}
+                {metricsLoading ? "..." : metrics?.totalHandoffs || 0}
               </div>
             </CardContent>
           </Card>
@@ -116,7 +132,7 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {metricsLoading ? "..." : metrics?.pending_handoffs || 0}
+                {metricsLoading ? "..." : metrics?.pendingHandoffs || 0}
               </div>
             </CardContent>
           </Card>
@@ -128,7 +144,7 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {metricsLoading ? "..." : metrics?.upcoming_appointments || 0}
+                {metricsLoading ? "..." : 0}
               </div>
             </CardContent>
           </Card>
