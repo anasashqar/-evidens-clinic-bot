@@ -12,7 +12,7 @@
 
 import { useState } from "react";
 import { trpc } from "../lib/trpc"; // عدّل المسار حسب مشروعك
-import { useNavigate } from "react-router-dom";
+import { useLocation } from "wouter";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -202,7 +202,7 @@ function WorkspaceCard({
   row: any;
   onRefresh: () => void;
 }) {
-  const navigate = useNavigate();
+  const [, setLocation] = useLocation();
   const { workspace, botSettings, zapiConfig } = row;
   const typeInfo = BUSINESS_TYPE_LABELS[workspace.business_type as BusinessType] ?? BUSINESS_TYPE_LABELS.other;
 
@@ -302,13 +302,13 @@ function WorkspaceCard({
         {/* أزرار الإجراءات */}
         <div className="mt-4 flex gap-2">
           <button
-            onClick={() => navigate(`/admin/workspace/${workspace.id}/settings`)}
+            onClick={() => setLocation(`/admin/workspace/${workspace.id}/settings`)}
             className="flex-1 rounded-xl bg-gray-900 py-2 text-xs font-semibold text-white transition hover:bg-gray-800"
           >
             ⚙️ الإعدادات
           </button>
           <button
-            onClick={() => navigate(`/admin/workspace/${workspace.id}/conversations`)}
+            onClick={() => setLocation(`/admin/workspace/${workspace.id}/conversations`)}
             className="flex-1 rounded-xl border border-gray-200 py-2 text-xs font-semibold text-gray-700 transition hover:bg-gray-50"
           >
             💬 المحادثات
