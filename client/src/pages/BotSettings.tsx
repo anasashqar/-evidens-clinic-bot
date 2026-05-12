@@ -14,8 +14,8 @@
  */
 
 import { useState, useEffect, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { trpc } from "../lib/trpc"; // عدّل المسار حسب مشروعك
+import { useParams, useLocation } from "wouter";
+import { trpc } from "../lib/trpc";
 
 // ─── Tab type ──────────────────────────────────────────────────────────────────
 
@@ -630,8 +630,9 @@ function Field({
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function BotSettings() {
-  const { workspaceId } = useParams<{ workspaceId: string }>();
-  const navigate = useNavigate();
+  const params = useParams<{ workspaceId: string }>();
+  const workspaceId = params.workspaceId;
+  const [, navigate] = useLocation();
   const [activeTab, setActiveTab] = useState<Tab>("zapi");
 
   const { data: allWorkspaces, isLoading } = trpc.admin.workspaces.useQuery();
@@ -657,7 +658,7 @@ export default function BotSettings() {
         <div className="text-center text-gray-400">
           <p className="text-xl">⚠️ الـ Workspace غير موجود</p>
           <button
-            onClick={() => navigate("/admin/workspaces")}
+            onClick={() => navigate("/workspaces")}
             className="mt-4 rounded-xl bg-gray-900 px-5 py-2.5 text-sm text-white"
           >
             العودة
@@ -681,7 +682,7 @@ export default function BotSettings() {
       {/* الهيدر */}
       <div className="mb-6 flex items-center gap-4">
         <button
-          onClick={() => navigate("/admin/workspaces")}
+          onClick={() => navigate("/workspaces")}
           className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
         >
           ← رجوع

@@ -21,15 +21,16 @@ import {
 } from "@/components/ui/sidebar";
 import { APP_LOGO, APP_TITLE, getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, LogOut, PanelLeft, Users } from "lucide-react";
+import { LayoutDashboard, Bot, Building2, LogOut, PanelLeft } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
 
 const menuItems = [
-  { icon: LayoutDashboard, label: "Page 1", path: "/" },
-  { icon: Users, label: "Page 2", path: "/some-path" },
+  { icon: LayoutDashboard, label: "لوحة التحكم",   path: "/" },
+  { icon: Bot,             label: "المحاكي",         path: "/simulator" },
+  { icon: Building2,       label: "العملاء",         path: "/workspaces" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -52,11 +53,14 @@ export default function DashboardLayout({
     localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString());
   }, [sidebarWidth]);
 
-  if (loading) {
+  const isDev = import.meta.env.DEV;
+
+  if (loading && !isDev) {
     return <DashboardLayoutSkeleton />
   }
 
-  if (!user) {
+  // في بيئة التطوير: تخطي شاشة تسجيل الدخول
+  if (!user && !isDev) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="flex flex-col items-center gap-8 p-8 max-w-md w-full">

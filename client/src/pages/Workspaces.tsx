@@ -302,13 +302,13 @@ function WorkspaceCard({
         {/* أزرار الإجراءات */}
         <div className="mt-4 flex gap-2">
           <button
-            onClick={() => setLocation(`/admin/workspace/${workspace.id}/settings`)}
+            onClick={() => setLocation(`/workspace/${workspace.id}/settings`)}
             className="flex-1 rounded-xl bg-gray-900 py-2 text-xs font-semibold text-white transition hover:bg-gray-800"
           >
             ⚙️ الإعدادات
           </button>
           <button
-            onClick={() => setLocation(`/admin/workspace/${workspace.id}/conversations`)}
+            onClick={() => setLocation(`/dashboard`)}
             className="flex-1 rounded-xl border border-gray-200 py-2 text-xs font-semibold text-gray-700 transition hover:bg-gray-50"
           >
             💬 المحادثات

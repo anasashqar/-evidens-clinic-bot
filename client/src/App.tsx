@@ -4,9 +4,10 @@ import NotFound from "@/pages/NotFound";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import BotSettings from "./pages/BotSettings";
 import Dashboard from "./pages/Dashboard";
 import Simulator from "./pages/Simulator";
-import Workspaces from "./pages/Workspaces"; // 1. أضف هذا السطر
+import Workspaces from "./pages/Workspaces";
 
 function Router() {
   return (
@@ -14,7 +15,8 @@ function Router() {
       <Route path={"/"} component={Dashboard} />
       <Route path={"/dashboard"} component={Dashboard} />
       <Route path={"/simulator"} component={Simulator} />
-      <Route path={"/workspaces"} component={Workspaces} /> {/* 2. أضف هذا السطر */}
+      <Route path={"/workspaces"} component={Workspaces} />
+      <Route path={"/workspace/:workspaceId/settings"} component={BotSettings} />
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
       <Route component={NotFound} />

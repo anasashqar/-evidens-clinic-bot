@@ -27,9 +27,21 @@ const requireUser = t.middleware(async opts => {
 
 export const protectedProcedure = t.procedure.use(requireUser);
 
+const isDev = process.env.NODE_ENV === 'development';
+
 export const adminProcedure = t.procedure.use(
   t.middleware(async opts => {
     const { ctx, next } = opts;
+
+    // في بيئة التطوير: تخطي التحقق من المصادقة لأن Manus OAuth غير متوفر محلياً
+    if (isDev && !ctx.user) {
+      return next({
+        ctx: {
+          ...ctx,
+          user: { id: 0, openId: 'dev-admin', name: 'Dev Admin', role: 'admin' } as any,
+        },
+      });
+    }
 
     if (!ctx.user || ctx.user.role !== 'admin') {
       throw new TRPCError({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });

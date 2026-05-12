@@ -34,35 +34,31 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-  // --- تمت إضافة نقطة استقبال واتساب (Webhook) هنا ---
-  // app.post("/api/webhook", async (req, res) => {
-  //   try {
-  //     const payload = req.body;
+  // ─── Webhook Z-API (Multi-tenant) ──────────────────────────────────────────
+  app.post("/api/webhook", async (req, res) => {
+    // يجب دائماً الرد بـ 200 فوراً حتى لا يُعيد Z-API الإرسال
+    res.status(200).send("OK");
 
-  //     // نتأكد أن الرسالة من مريض (وليست من البوت نفسه أو من مجموعة)
-  //     if (!payload.fromMe && !payload.isGroup) {
-  //       const phone = payload.phone;
-  //       // استخراج نص الرسالة حسب هيكلية Z-API
-  //       const textMessage = payload.text?.message || payload.text || "";
+    try {
+      const { extractMessageFromWebhook } = await import("../services/zapi.service");
+      const { handleIncomingMessage } = await import("../services/bot.engine");
 
-  //       if (phone && typeof textMessage === "string" && textMessage.trim().length > 0) {
-  //         console.log(`[WhatsApp] رسالة جديدة من ${phone}: ${textMessage}`);
-          
-  //         // تمرير الرسالة إلى البوت ليعالجها بالذكاء الاصطناعي (في الخلفية)
-  //         handleIncomingMessage(phone, textMessage, false).catch(err => {
-  //           console.error("[Bot Error] خطأ أثناء معالجة الرسالة:", err);
-  //         });
-  //       }
-  //     }
+      const payload = req.body;
+      const extracted = extractMessageFromWebhook(payload);
 
-  //     // يجب دائماً الرد بـ 200 لكي لا يقوم Z-API بإعادة الإرسال
-  //     res.status(200).send("OK");
-  //   } catch (error) {
-  //     console.error("[Webhook Error]:", error);
-  //     res.status(500).send("Error");
-  //   }
-  // });
-  // ----------------------------------------------------
+      if (!extracted) return; // رسالة مُرسَلة منّا أو غير صالحة
+
+      console.log(`[Webhook] رسالة واردة | instance: ${extracted.instanceId} | من: ${extracted.phone}`);
+
+      // المعالجة في الخلفية
+      handleIncomingMessage(extracted.instanceId, extracted.phone, extracted.message)
+        .catch(err => console.error("[Bot Error]", err));
+
+    } catch (error) {
+      console.error("[Webhook Error]:", error);
+    }
+  });
+  // ───────────────────────────────────────────────────────────────────────────
 
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
