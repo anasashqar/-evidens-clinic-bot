@@ -46,7 +46,8 @@ export const appRouter = router({
           }
 
           // Process message with bot
-          await handleIncomingMessage(extracted.phone, extracted.message);
+          await handleIncomingMessage(extracted.instanceId, extracted.phone, extracted.message);
+
 
           return { success: true, message: 'Processed' };
         } catch (error) {
