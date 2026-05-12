@@ -70,6 +70,7 @@ export async function getWorkspaceByInstanceId(
 
 /**
  * للمحاكي (Simulator): يجلب الإعدادات مباشرة بـ workspaceId
+ * يستخدم LEFT JOIN حتى يعمل حتى لو لم يتم إعداد Z-API أو Bot Settings بعد
  */
 export async function getWorkspaceConfigById(
   workspaceId: string
@@ -82,15 +83,48 @@ export async function getWorkspaceConfigById(
         botSettings: workspaceBotSettings,
       })
       .from(workspaces)
-      .innerJoin(workspaceZapiConfig, eq(workspaceZapiConfig.workspace_id, workspaces.id))
-      .innerJoin(
+      .leftJoin(workspaceZapiConfig, eq(workspaceZapiConfig.workspace_id, workspaces.id))
+      .leftJoin(
         workspaceBotSettings,
         eq(workspaceBotSettings.workspace_id, workspaces.id)
       )
       .where(eq(workspaces.id, workspaceId))
       .limit(1);
 
-    return rows.length ? rows[0] : null;
+    if (!rows.length) return null;
+
+    const row = rows[0];
+
+    // توفير قيم افتراضية إذا لم تكن الإعدادات موجودة بعد
+    const botSettings: WorkspaceBotSettings = row.botSettings ?? {
+      id: '',
+      workspace_id: workspaceId,
+      business_name: row.workspace.name,
+      system_prompt: `أنت مساعد ذكي لـ ${row.workspace.name}. ساعد الزبائن بود واحترافية. اجمع المعلومات اللازمة ثم أخبرهم أن المنسق سيتواصل معهم.`,
+      handoff_phone: null,
+      handoff_name: 'المنسق',
+      max_messages_before_handoff: 12,
+      is_bot_active: true,
+      created_at: new Date(),
+      updated_at: new Date(),
+    } as WorkspaceBotSettings;
+
+    const zapiConfig: WorkspaceZapiConfig = row.zapiConfig ?? {
+      id: '',
+      workspace_id: workspaceId,
+      instance_id: '',
+      token: '',
+      client_token: '',
+      base_url: 'https://api.z-api.io',
+      created_at: new Date(),
+      updated_at: new Date(),
+    } as WorkspaceZapiConfig;
+
+    return {
+      workspace: row.workspace,
+      botSettings,
+      zapiConfig,
+    };
   } catch (error) {
     console.error("[DB] getWorkspaceConfigById error:", error);
     return null;
