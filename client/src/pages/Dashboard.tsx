@@ -8,7 +8,7 @@
  * ═══════════════════════════════════════════════════════════════════
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { trpc } from "../lib/trpc";
 import { useLocation } from "wouter";
 
@@ -133,13 +133,13 @@ export default function Dashboard() {
 
   // ── Data fetching ──────────────────────────────────────────────────────────
 
-  const { data: workspaces, isLoading: wsLoading } = trpc.admin.workspaces.useQuery(undefined, {
-    onSuccess: (data: any[]) => {
-      if (data?.length && !selectedWorkspaceId) {
-        setSelectedWorkspaceId(data[0].workspace.id);
-      }
-    },
-  } as any);
+  const { data: workspaces, isLoading: wsLoading } = trpc.admin.workspaces.useQuery(undefined);
+
+  useEffect(() => {
+  if (workspaces?.length && !selectedWorkspaceId) {
+    setSelectedWorkspaceId(workspaces[0].workspace.id);
+  }
+}, [workspaces]);
 
   const workspaceId = selectedWorkspaceId || (workspaces?.[0]?.workspace?.id ?? "");
 
