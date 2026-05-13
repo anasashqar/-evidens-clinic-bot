@@ -36,6 +36,9 @@ import {
   getConversationMessages,
   getWorkspaceHandoffs,
   updateHandoffStatus,
+  getOrCreateWorkspacePatient,         
+  getActiveWorkspaceConversation,        
+  getLatestWorkspaceConversation,        
 } from "../db/workspace.queries";
 import {
   extractMessageFromWebhook,
@@ -258,23 +261,16 @@ export const appRouter = router({
       )
       .query(async ({ input }) => {
         try {
-          const {
-            getOrCreateWorkspacePatient,
-            getActiveWorkspaceConversation,
-            getConversationMessages,
-          } = await import("../db/workspace.queries");
-
-
           const patient = await getOrCreateWorkspacePatient(
             input.workspaceId,
             input.phone
           );
           if (!patient) return [];
 
-          const conversation = await getActiveWorkspaceConversation(
-            input.workspaceId,
-            patient.id
-          );
+          const conversation =
+            (await getActiveWorkspaceConversation(input.workspaceId, patient.id)) ??
+            (await getLatestWorkspaceConversation(input.workspaceId, patient.id));
+
           if (!conversation) return [];
 
           const messages = await getConversationMessages(conversation.id);
@@ -289,6 +285,7 @@ export const appRouter = router({
           return [];
         }
       }),
+
   }),
 });
 

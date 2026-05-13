@@ -14,7 +14,9 @@ export async function createContext(
   let user: User | null = null;
 
   try {
-    user = await sdk.authenticateRequest(opts.req);
+    if (opts.req.headers.cookie) {
+  user = await sdk.authenticateRequest(opts.req);
+}
   } catch (error) {
     // Authentication is optional for public procedures.
     user = null;

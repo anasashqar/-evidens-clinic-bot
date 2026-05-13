@@ -197,6 +197,28 @@ export async function getActiveWorkspaceConversation(
   return rows[0] ?? null;
 }
 
+// في server/db/workspace.queries.ts
+// أضف بعد getActiveWorkspaceConversation
+
+export async function getLatestWorkspaceConversation(
+  workspaceId: string,
+  patientId: string
+): Promise<Conversation | null> {
+  const rows = await db
+    .select()
+    .from(conversations)
+    .where(
+      and(
+        eq(conversations.workspace_id, workspaceId),
+        eq(conversations.patient_id, patientId)
+      )
+    )
+    .orderBy(desc(conversations.created_at))
+    .limit(1);
+
+  return rows[0] ?? null;
+}
+
 export async function createWorkspaceConversation(
   workspaceId: string,
   patientId: string
