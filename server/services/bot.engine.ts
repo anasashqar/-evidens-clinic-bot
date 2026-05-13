@@ -280,49 +280,50 @@ async function extractAndUpdateContext(
   userMessage: string
 ): Promise<void> {
   const currentCtx = { ...((context.conversation.context as Record<string, unknown>) ?? {}) };
-  let patientUpdates: Partial<Pick<Patient, "name" | "is_returning_patient">> = {};
 
-  // استخراج الاسم
-  const nameMatch = userMessage.match(/(?:اسمي|أنا)\s+([\u0600-\u06FF]{2,15}(?:\s+[\u0600-\u06FF]{2,15})?)/);
-  if (nameMatch && !currentCtx.name) {
-    currentCtx.name = nameMatch[1].trim();
-    patientUpdates.name = currentCtx.name as string;
+  try {
+    const extraction = await invokeLLM({
+      messages: [
+        {
+          role: "system",
+          content: `استخرج المعلومات من رسالة المستخدم وأعد JSON فقط بهذا الشكل بدون أي نص إضافي أو backticks:
+{
+  "name": "الاسم الشخصي فقط كلمة أو كلمتان أو null",
+  "concern": "سبب الزيارة أو الخدمة المطلوبة أو null",
+  "preferred_period": "الوقت المفضل مثل صباحاً أو مساءً أو تاريخ محدد أو null",
+  "is_returning": true أو false أو null
+}
+قواعد صارمة:
+- name: الاسم الشخصي فقط، لا تضع جملاً أو أوصافاً
+- is_returning: true فقط إذا ذكر صراحة أنه زار من قبل
+- إذا المعلومة غير موجودة في الرسالة ضع null`,
+        },
+        { role: "user", content: userMessage },
+      ],
+    });
+
+    const contentRaw = extraction.choices[0]?.message?.content;
+const raw = typeof contentRaw === "string" ? contentRaw.trim() : "{}";
+    const extracted = JSON.parse(raw.replace(/```json|```/g, "").trim());
+
+    // دمج مع السياق الموجود — لا تستبدل القيم المحفوظة مسبقاً
+    if (extracted.name     && !currentCtx.name)             currentCtx.name             = extracted.name;
+    if (extracted.concern  && !currentCtx.concern)          currentCtx.concern          = extracted.concern;
+    if (extracted.preferred_period && !currentCtx.preferred_period)
+                                                            currentCtx.preferred_period = extracted.preferred_period;
+
+    // تحديث بيانات المريض في DB
+    const patientUpdates: Partial<Pick<Patient, "name" | "is_returning_patient">> = {};
+    if (extracted.name   && !context.patient.name)          patientUpdates.name                = extracted.name;
+    if (extracted.is_returning === true)                    patientUpdates.is_returning_patient = true;
+
+    if (Object.keys(patientUpdates).length > 0)
+      await updatePatient(context.patient.id, patientUpdates);
+
+  } catch (err) {
+    console.warn("[BotEngine] LLM extraction failed, skipping context update:", err);
   }
 
-  // استخراج الحاجة الأساسية (للعيادات)
-  // ملاحظة: هذا اختياري — المحادثة الأذكى تعتمد على system_prompt المخصص
-  const concernMap: Record<string, string> = {
-    "جلد|بشرة|وجه": "جلد",
-    "شعر|فروة": "شعر",
-    "أظافر|ظفر": "أظافر",
-    "منزل|شقة|عقار|إيجار|بيع": "عقار",
-    "طلب|منتج|سعر|شحن": "متجر",
-    "طاولة|حجز|مطعم|أكل": "مطعم",
-  };
-
-  for (const [pattern, concern] of Object.entries(concernMap)) {
-    if (new RegExp(pattern).test(userMessage) && !currentCtx.concern) {
-      currentCtx.concern = concern;
-      break;
-    }
-  }
-
-  // استخراج تفضيل الوقت
-  if (!currentCtx.preferred_period) {
-    if (userMessage.includes("صباح")) currentCtx.preferred_period = "صباحاً";
-    else if (userMessage.includes("مساء")) currentCtx.preferred_period = "مساءً";
-    else if (userMessage.includes("بعد الظهر")) currentCtx.preferred_period = "بعد الظهر";
-  }
-
-  // هل هو عميل عائد؟
-  if (["مرة ثانية", "عدت", "زرت", "كنت", "سبق"].some((kw) => userMessage.includes(kw))) {
-    patientUpdates.is_returning_patient = true;
-  }
-
-  // حفظ التحديثات
-  if (Object.keys(patientUpdates).length > 0) {
-    await updatePatient(context.patient.id, patientUpdates);
-  }
   await updateConversation(context.conversation.id, { context: currentCtx });
 }
 

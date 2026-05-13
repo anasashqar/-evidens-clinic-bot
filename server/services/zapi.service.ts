@@ -141,6 +141,10 @@ if (payload.type && IGNORED_TYPES.includes(payload.type)) return null;
   const phone = payload.phone || payload.participantPhone || "";
   if (!phone) return null;
 
+  // تجاهل رسائل المجموعات — phone المجموعة يحتوي على @g.us أو participantPhone
+  if (phone.includes("@g.us") || phone.includes("-group")) return null;
+  if (payload.participantPhone && payload.phone !== payload.participantPhone) return null;
+
   if (payload.text?.message) {
     return { instanceId, phone, message: payload.text.message, messageType: "text" };
   }
