@@ -129,13 +129,19 @@ export function extractMessageFromWebhook(
   const instanceId = payload.instanceId || "";
   if (!instanceId) {
     console.warn("[Z-API] Webhook missing instanceId — cannot route to workspace");
+    console.log("Webhook payload:", JSON.stringify(payload, null, 2));
     return null;
   }
+
+  // تجاهل أحداث الحالة — ليست رسائل حقيقية
+// تجاهل أحداث الحالة فقط إذا ما فيها رسالة نصية
+const IGNORED_TYPES = ["DeliveryCallback", "ReadCallback", "PlayedCallback", "presence"];
+if (payload.type && IGNORED_TYPES.includes(payload.type)) return null;
 
   const phone = payload.phone || payload.participantPhone || "";
   if (!phone) return null;
 
-  if (payload.type === "text" && payload.text?.message) {
+  if (payload.text?.message) {
     return { instanceId, phone, message: payload.text.message, messageType: "text" };
   }
   if (payload.type === "image" && payload.image?.caption) {
