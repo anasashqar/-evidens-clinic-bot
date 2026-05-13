@@ -1,42 +1,114 @@
 /**
- * ═══════════════════════════════════════════════════════════════════
- *  BotSettings.tsx — صفحة إعدادات الـ workspace الكاملة
- *
- *  تبويبات:
- *  1. إعدادات Z-API (ربط رقم الواتساب)
- *  2. محرر الشخصية (System Prompt)
- *  3. إعدادات التحويل (Handoff)
- *  4. محاكي المحادثة (Simulator)
- *
- *  الاستخدام في router:
- *    <Route path="/admin/workspace/:workspaceId/settings" element={<BotSettings />} />
- * ═══════════════════════════════════════════════════════════════════
+ * BotSettings.tsx — إعدادات الـ Workspace
+ * ملاحظة: داخل DashboardLayout — لا min-h-screen هنا
  */
 
 import { useState, useEffect, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { trpc } from "../lib/trpc";
-
-// ─── Tab type ──────────────────────────────────────────────────────────────────
-
-type Tab = "zapi" | "prompt" | "handoff" | "simulator";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Smartphone,
+  Bot,
+  ArrowRightLeft,
+  MessageSquare,
+  ChevronRight,
+  Eye,
+  EyeOff,
+  CheckCircle2,
+  AlertCircle,
+  ArrowRight,
+  Loader2,
+} from "lucide-react";
 
 // ─── Toast ─────────────────────────────────────────────────────────────────────
 
-function Toast({ message, type }: { message: string; type: "success" | "error" }) {
-  return (
+function useToast() {
+  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+
+  const show = (msg: string, type: "success" | "error") => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3500);
+  };
+
+  const ToastEl = toast ? (
     <div
-      className={`fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-xl px-5 py-3 text-sm font-medium text-white shadow-xl transition-all ${
-        type === "success" ? "bg-green-600" : "bg-red-600"
+      className={`fixed bottom-6 right-1/2 translate-x-1/2 z-50 flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-medium text-white shadow-2xl animate-in slide-in-from-bottom-2 ${
+        toast.type === "success" ? "bg-green-600" : "bg-destructive"
       }`}
     >
-      {type === "success" ? "✅ " : "❌ "}
-      {message}
+      {toast.type === "success" ? (
+        <CheckCircle2 className="h-4 w-4 shrink-0" />
+      ) : (
+        <AlertCircle className="h-4 w-4 shrink-0" />
+      )}
+      {toast.msg}
+    </div>
+  ) : null;
+
+  return { show, ToastEl };
+}
+
+// ─── Field Component ───────────────────────────────────────────────────────────
+
+function Field({
+  label,
+  placeholder,
+  value,
+  onChange,
+  hint,
+  mono,
+  isPassword,
+}: {
+  label: string;
+  placeholder: string;
+  value: string;
+  onChange: (v: string) => void;
+  hint?: string;
+  mono?: boolean;
+  isPassword?: boolean;
+}) {
+  const [show, setShow] = useState(false);
+
+  return (
+    <div className="space-y-1.5">
+      <Label>{label}</Label>
+      <div className="relative">
+        <Input
+          type={isPassword && !show ? "password" : "text"}
+          placeholder={placeholder}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={`${mono ? "font-mono text-sm" : ""} ${isPassword ? "pl-9" : ""}`}
+          dir="ltr"
+        />
+        {isPassword && (
+          <button
+            type="button"
+            onClick={() => setShow((s) => !s)}
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        )}
+      </div>
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
     </div>
   );
 }
 
-// ─── Tab: Z-API Config ─────────────────────────────────────────────────────────
+// ─── Tab: Z-API ────────────────────────────────────────────────────────────────
 
 function ZApiTab({
   workspaceId,
@@ -51,42 +123,38 @@ function ZApiTab({
     client_token: initial?.client_token ?? "",
     base_url: initial?.base_url ?? "https://api.z-api.io",
   });
-  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+  const { show, ToastEl } = useToast();
 
   const saveMutation = trpc.admin.saveZapiConfig.useMutation({
-    onSuccess: () => showToast("تم حفظ إعدادات Z-API بنجاح ✓", "success"),
-    onError: (e: { message: string }) => showToast(e.message, "error"),
+    onSuccess: () => show("تم حفظ إعدادات Z-API بنجاح", "success"),
+    onError: (e: { message: string }) => show(e.message, "error"),
   });
 
-  const showToast = (msg: string, type: "success" | "error") => {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 3000);
-  };
-
   return (
-    <div className="space-y-5" dir="rtl">
+    <div className="space-y-6" dir="rtl">
       <div>
-        <h2 className="text-lg font-bold text-gray-900">إعدادات Z-API</h2>
-        <p className="mt-1 text-sm text-gray-500">
-          ربط رقم واتساب هذا العميل. ستجد هذه القيم في لوحة تحكم{" "}
+        <h2 className="text-base font-semibold">ربط Z-API</h2>
+        <p className="text-sm text-muted-foreground mt-1">
+          ستجد هذه القيم في لوحة تحكم{" "}
           <a
             href="https://app.z-api.io"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-blue-600 underline"
+            className="text-primary underline underline-offset-2"
           >
             z-api.io
           </a>
         </p>
       </div>
 
-      <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-700">
-        <p className="font-medium">⚡ مهم: الـ Instance ID هو مفتاح الـ Webhook</p>
-        <p className="mt-1 text-xs opacity-80">
-          عند وصول أي رسالة، يستخدم النظام Instance ID لتحديد هذا العميل تلقائياً.
-          تأكد أن كل عميل له Instance ID مختلف.
-        </p>
-      </div>
+      <Card className="border-primary/20 bg-primary/5">
+        <CardContent className="pt-4 pb-4">
+          <p className="text-sm font-medium text-primary">مهم: الـ Instance ID هو مفتاح الـ Webhook</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            كل عميل يجب أن يكون له Instance ID مختلف لتوجيه الرسائل بشكل صحيح.
+          </p>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Field
@@ -125,20 +193,27 @@ function ZApiTab({
         />
       </div>
 
-      <button
+      <Button
         onClick={() => saveMutation.mutate({ workspaceId, ...form })}
         disabled={saveMutation.isPending}
-        className="w-full rounded-xl bg-gray-900 py-3 text-sm font-semibold text-white transition hover:bg-gray-800 disabled:opacity-50"
+        className="w-full"
       >
-        {saveMutation.isPending ? "جاري الحفظ..." : "💾 حفظ إعدادات Z-API"}
-      </button>
+        {saveMutation.isPending ? (
+          <>
+            <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+            جاري الحفظ...
+          </>
+        ) : (
+          "حفظ إعدادات Z-API"
+        )}
+      </Button>
 
-      {toast && <Toast message={toast.msg} type={toast.type} />}
+      {ToastEl}
     </div>
   );
 }
 
-// ─── Tab: System Prompt ────────────────────────────────────────────────────────
+// ─── Tab: Prompt ───────────────────────────────────────────────────────────────
 
 const PROMPT_TEMPLATES: Record<string, string> = {
   clinic: `أنت مساعد ذكي لـ {اسم_العيادة}. دورك هو:
@@ -174,6 +249,14 @@ const PROMPT_TEMPLATES: Record<string, string> = {
 لا تعطِ أسعاراً نهائية دون الرجوع للمسؤول`,
 };
 
+const BUSINESS_TYPE_LABELS: Record<string, string> = {
+  clinic: "العيادة",
+  store: "المتجر",
+  restaurant: "المطعم",
+  real_estate: "العقارات",
+  other: "البزنس",
+};
+
 function PromptTab({
   workspaceId,
   businessType,
@@ -189,112 +272,111 @@ function PromptTab({
   const [prompt, setPrompt] = useState(
     initial?.system_prompt?.startsWith("⚠️") ? "" : (initial?.system_prompt ?? "")
   );
-  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { show, ToastEl } = useToast();
 
   const saveMutation = trpc.admin.saveBotSettings.useMutation({
-    onSuccess: () => showToast("تم حفظ شخصية البوت بنجاح ✓", "success"),
-    onError: (e: { message: string }) => showToast(e.message, "error"),
+    onSuccess: () => show("تم حفظ شخصية البوت بنجاح", "success"),
+    onError: (e: { message: string }) => show(e.message, "error"),
   });
-
-  const showToast = (msg: string, type: "success" | "error") => {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 3000);
-  };
-
-  const loadTemplate = () => {
-    const template = PROMPT_TEMPLATES[businessType] ?? PROMPT_TEMPLATES.clinic;
-    setPrompt(template.replace(/{.*?}/g, name || "البزنس"));
-    textareaRef.current?.focus();
-  };
 
   const charCount = prompt.length;
   const isShort = charCount > 0 && charCount < 20;
+  const typeLabel = BUSINESS_TYPE_LABELS[businessType] ?? "البزنس";
+
+  const loadTemplate = () => {
+    const template = PROMPT_TEMPLATES[businessType] ?? PROMPT_TEMPLATES.clinic;
+    setPrompt(template.replace(/{.*?}/g, name || typeLabel));
+    textareaRef.current?.focus();
+  };
 
   return (
     <div className="space-y-5" dir="rtl">
       <div>
-        <h2 className="text-lg font-bold text-gray-900">محرر شخصية البوت</h2>
-        <p className="mt-1 text-sm text-gray-500">
-          الـ System Prompt يُحدد شخصية البوت وكيف يتعامل مع الزبائن. يمكن تعديله في أي وقت دون إعادة نشر.
+        <h2 className="text-base font-semibold">محرر شخصية البوت</h2>
+        <p className="text-sm text-muted-foreground mt-1">
+          الـ System Prompt يُحدد كيف يتصرف البوت مع الزبائن. يمكن تعديله في أي وقت.
         </p>
       </div>
 
-      <Field
-        label="اسم البزنس"
-        placeholder="عيادة النور للجلدية"
-        value={name}
-        onChange={setName}
-        hint="يُذكر في رسائل التحويل للموظف"
-      />
+      <div className="space-y-1.5">
+        <Label htmlFor="biz-name">اسم البزنس</Label>
+        <Input
+          id="biz-name"
+          placeholder="مثال: عيادة النور للجلدية"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <p className="text-xs text-muted-foreground">يُذكر في رسائل التحويل للموظف</p>
+      </div>
 
-      {/* منطقة الـ Prompt */}
-      <div>
-        <div className="mb-1.5 flex items-center justify-between">
-          <label className="text-sm font-medium text-gray-700">
-            System Prompt <span className="text-red-500">*</span>
-          </label>
-          <button
-            onClick={loadTemplate}
-            className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 transition hover:bg-blue-100"
-          >
-            📋 تحميل قالب {businessType === "clinic" ? "العيادة" : businessType === "store" ? "المتجر" : businessType === "restaurant" ? "المطعم" : "العقارات"}
-          </button>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label>
+            System Prompt <span className="text-destructive">*</span>
+          </Label>
+          <Button variant="outline" size="sm" onClick={loadTemplate} className="h-7 text-xs">
+            تحميل قالب {typeLabel}
+          </Button>
         </div>
 
         <textarea
           ref={textareaRef}
-          className={`w-full rounded-xl border bg-white px-4 py-3 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-            isShort ? "border-red-300" : "border-gray-300"
+          className={`w-full rounded-lg border bg-background px-4 py-3 text-sm leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-ring transition-colors ${
+            isShort ? "border-destructive ring-destructive/20" : "border-input"
           }`}
-          rows={14}
-          placeholder="اكتب تعليمات البوت هنا... أو حمّل قالباً جاهزاً من الأعلى"
+          rows={13}
+          placeholder="اكتب تعليمات البوت هنا، أو حمّل قالباً جاهزاً..."
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           style={{ fontFamily: "Tahoma, Arial, sans-serif", direction: "rtl" }}
         />
 
-        <div className="mt-1 flex items-center justify-between text-xs">
-          <span className={isShort ? "text-red-500" : "text-gray-400"}>
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span className={isShort ? "text-destructive" : ""}>
             {isShort ? "⚠️ الـ prompt قصير جداً (20 حرف على الأقل)" : `${charCount} حرف`}
           </span>
-          <span className="text-gray-400">
-            {charCount > 2000 ? "⚠️ prompt طويل — قد يؤثر على الأداء" : ""}
-          </span>
+          {charCount > 2000 && (
+            <span className="text-amber-600">⚠️ prompt طويل — قد يؤثر على الأداء</span>
+          )}
         </div>
       </div>
 
-      {/* نصائح */}
-      <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
-        <p className="mb-2 text-xs font-semibold text-gray-600">💡 نصائح لـ prompt أفضل</p>
-        <ul className="space-y-1 text-xs text-gray-500 list-disc list-inside">
-          <li>حدد دور البوت بوضوح في البداية</li>
-          <li>اذكر المعلومات التي يجب جمعها من الزبون</li>
-          <li>حدد متى يجب تحويل المحادثة لموظف بشري</li>
-          <li>اذكر الأشياء التي يجب تجنبها (مثل: لا تعطِ أسعاراً)</li>
-        </ul>
-      </div>
+      <Card className="bg-muted/50 border-0">
+        <CardContent className="pt-4 pb-4">
+          <p className="text-xs font-semibold mb-2">نصائح لـ prompt أفضل</p>
+          <ul className="space-y-1 text-xs text-muted-foreground list-disc list-inside">
+            <li>حدد دور البوت بوضوح في البداية</li>
+            <li>اذكر المعلومات التي يجب جمعها من الزبون</li>
+            <li>حدد متى يجب تحويل المحادثة لموظف بشري</li>
+            <li>اذكر الأشياء التي يجب تجنبها (مثل: لا تعطِ أسعاراً)</li>
+          </ul>
+        </CardContent>
+      </Card>
 
-      <button
+      <Button
         onClick={() =>
-          saveMutation.mutate({
-            workspaceId,
-            business_name: name,
-            system_prompt: prompt,
-          })
+          saveMutation.mutate({ workspaceId, business_name: name, system_prompt: prompt })
         }
         disabled={saveMutation.isPending || isShort || !name}
-        className="w-full rounded-xl bg-gray-900 py-3 text-sm font-semibold text-white transition hover:bg-gray-800 disabled:opacity-50"
+        className="w-full"
       >
-        {saveMutation.isPending ? "جاري الحفظ..." : "💾 حفظ شخصية البوت"}
-      </button>
+        {saveMutation.isPending ? (
+          <>
+            <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+            جاري الحفظ...
+          </>
+        ) : (
+          "حفظ شخصية البوت"
+        )}
+      </Button>
 
-      {toast && <Toast message={toast.msg} type={toast.type} />}
+      {ToastEl}
     </div>
   );
 }
 
-// ─── Tab: Handoff Settings ─────────────────────────────────────────────────────
+// ─── Tab: Handoff ──────────────────────────────────────────────────────────────
 
 function HandoffTab({
   workspaceId,
@@ -318,57 +400,69 @@ function HandoffTab({
     max_messages_before_handoff: initial?.max_messages_before_handoff ?? 12,
     is_bot_active: initial?.is_bot_active ?? true,
   });
-  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+  const { show, ToastEl } = useToast();
 
   const saveMutation = trpc.admin.saveBotSettings.useMutation({
-    onSuccess: () => showToast("تم حفظ إعدادات التحويل بنجاح ✓", "success"),
-    onError: (e: { message: string }) => showToast(e.message, "error"),
+    onSuccess: () => show("تم حفظ إعدادات التحويل بنجاح", "success"),
+    onError: (e: { message: string }) => show(e.message, "error"),
   });
 
-  const showToast = (msg: string, type: "success" | "error") => {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 3000);
-  };
-
   return (
-    <div className="space-y-6" dir="rtl">
+    <div className="space-y-5" dir="rtl">
       <div>
-        <h2 className="text-lg font-bold text-gray-900">إعدادات التحويل</h2>
-        <p className="mt-1 text-sm text-gray-500">
-          عند اكتمال المحادثة أو طلب الزبون، يُحوِّل البوت المحادثة لموظف بشري على هذا الرقم.
+        <h2 className="text-base font-semibold">إعدادات التحويل</h2>
+        <p className="text-sm text-muted-foreground mt-1">
+          عند اكتمال المحادثة، يُحوِّل البوت الزبون لموظف بشري على هذا الرقم.
         </p>
       </div>
 
-      <div className="rounded-2xl border bg-white p-5 space-y-4">
-        <h3 className="text-sm font-semibold text-gray-700 border-b pb-2">📞 بيانات المنسق البشري</h3>
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">بيانات المنسق البشري</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>رقم هاتف المنسق</Label>
+              <Input
+                placeholder="972501234567"
+                value={form.handoff_phone}
+                onChange={(e) => setForm((f) => ({ ...f, handoff_phone: e.target.value }))}
+                dir="ltr"
+                className="font-mono"
+              />
+              <p className="text-xs text-muted-foreground">
+                بالصيغة الدولية بدون + (مثال: 972501234567)
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label>اسم المنسق</Label>
+              <Input
+                placeholder="مريم"
+                value={form.handoff_name}
+                onChange={(e) => setForm((f) => ({ ...f, handoff_name: e.target.value }))}
+              />
+              <p className="text-xs text-muted-foreground">
+                سيذكره البوت للزبون عند التحويل
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field
-            label="رقم هاتف المنسق"
-            placeholder="9725XXXXXXXX"
-            value={form.handoff_phone}
-            onChange={(v) => setForm((f) => ({ ...f, handoff_phone: v }))}
-            hint="بالصيغة الدولية بدون + (مثال: 972501234567)"
-          />
-          <Field
-            label="اسم المنسق"
-            placeholder="مريم"
-            value={form.handoff_name}
-            onChange={(v) => setForm((f) => ({ ...f, handoff_name: v }))}
-            hint="سيذكره البوت للزبون عند التحويل"
-          />
-        </div>
-      </div>
-
-      <div className="rounded-2xl border bg-white p-5 space-y-4">
-        <h3 className="text-sm font-semibold text-gray-700 border-b pb-2">⚙️ إعدادات متقدمة</h3>
-
-        {/* Max messages */}
-        <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">
-            الحد الأقصى للرسائل قبل التحويل
-          </label>
-          <div className="flex items-center gap-4">
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">إعدادات متقدمة</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {/* Max messages slider */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>الحد الأقصى للرسائل قبل التحويل</Label>
+              <span className="text-sm font-bold bg-muted px-2.5 py-0.5 rounded-md">
+                {form.max_messages_before_handoff}
+              </span>
+            </div>
             <input
               type="range"
               min={3}
@@ -377,63 +471,57 @@ function HandoffTab({
               onChange={(e) =>
                 setForm((f) => ({ ...f, max_messages_before_handoff: Number(e.target.value) }))
               }
-              className="flex-1"
+              className="w-full accent-primary"
             />
-            <span className="w-12 rounded-lg bg-gray-100 py-1 text-center text-sm font-bold text-gray-700">
-              {form.max_messages_before_handoff}
-            </span>
-          </div>
-          <p className="mt-1 text-xs text-gray-400">
-            إذا تجاوز عدد رسائل المحادثة هذا الحد، يُحوَّل تلقائياً
-          </p>
-        </div>
-
-        {/* تفعيل/تعطيل البوت */}
-        <div className="flex items-center justify-between rounded-xl bg-gray-50 p-4">
-          <div>
-            <p className="text-sm font-medium text-gray-700">حالة البوت</p>
-            <p className="text-xs text-gray-400">
-              {form.is_bot_active ? "البوت يعمل ويرد على الرسائل" : "البوت متوقف — الرسائل لن تُعالج"}
+            <p className="text-xs text-muted-foreground">
+              إذا تجاوز عدد رسائل المحادثة هذا الحد، يُحوَّل تلقائياً
             </p>
           </div>
-          <button
-            onClick={() => setForm((f) => ({ ...f, is_bot_active: !f.is_bot_active }))}
-            className={`relative h-7 w-14 rounded-full transition-colors ${
-              form.is_bot_active ? "bg-green-500" : "bg-gray-300"
-            }`}
-          >
-            <span
-              className={`absolute top-0.5 h-6 w-6 transform rounded-full bg-white shadow transition-transform ${
-                form.is_bot_active ? "translate-x-7" : "translate-x-0.5"
+
+          {/* Bot toggle */}
+          <div className="flex items-center justify-between rounded-xl bg-muted/50 p-4">
+            <div>
+              <p className="text-sm font-medium">حالة البوت</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {form.is_bot_active
+                  ? "البوت يعمل ويرد على الرسائل"
+                  : "البوت متوقف — الرسائل لن تُعالج"}
+              </p>
+            </div>
+            <button
+              onClick={() => setForm((f) => ({ ...f, is_bot_active: !f.is_bot_active }))}
+              className={`relative h-7 w-14 rounded-full transition-colors ${
+                form.is_bot_active ? "bg-green-500" : "bg-muted-foreground/30"
               }`}
-            />
-          </button>
-        </div>
-      </div>
+            >
+              <span
+                className={`absolute top-0.5 h-6 w-6 transform rounded-full bg-white shadow-sm transition-transform ${
+                  form.is_bot_active ? "translate-x-7" : "translate-x-0.5"
+                }`}
+              />
+            </button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* معاينة رسالة التحويل */}
       {form.handoff_phone && (
-        <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
-          <p className="mb-2 text-xs font-semibold text-blue-700">👁️ معاينة رسالة التحويل للمنسق</p>
-          <div className="rounded-xl bg-white p-3 text-xs text-gray-600 whitespace-pre-line border border-blue-100">
-            {`🔔 *طلب جديد - ${initial?.business_name ?? "البزنس"}*
-
-👤 *العميل:* [اسم الزبون]
-📱 *الهاتف:* [رقم الزبون]
-
-📋 *ملخص المحادثة:*
-[ملخص تلقائي من البوت]
-
----
-يرجى التواصل مع العميل في أقرب وقت.`}
-          </div>
-          <p className="mt-2 text-xs text-blue-600">
-            ✅ ستُرسل لـ {form.handoff_name} على {form.handoff_phone}
-          </p>
-        </div>
+        <Card className="border-primary/20 bg-primary/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs text-primary">معاينة رسالة التحويل للمنسق</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="rounded-lg bg-background p-3 text-xs text-muted-foreground whitespace-pre-line border font-mono leading-relaxed">
+              {`🔔 *طلب جديد - ${initial?.business_name ?? "البزنس"}*\n\n👤 *العميل:* [اسم الزبون]\n📱 *الهاتف:* [رقم الزبون]\n\n📋 *ملخص المحادثة:*\n[ملخص تلقائي من البوت]\n\n---\nيرجى التواصل مع العميل في أقرب وقت.`}
+            </div>
+            <p className="text-xs text-primary mt-2">
+              ستُرسل لـ {form.handoff_name} على {form.handoff_phone}
+            </p>
+          </CardContent>
+        </Card>
       )}
 
-      <button
+      <Button
         onClick={() =>
           saveMutation.mutate({
             workspaceId,
@@ -446,12 +534,19 @@ function HandoffTab({
           })
         }
         disabled={saveMutation.isPending}
-        className="w-full rounded-xl bg-gray-900 py-3 text-sm font-semibold text-white transition hover:bg-gray-800 disabled:opacity-50"
+        className="w-full"
       >
-        {saveMutation.isPending ? "جاري الحفظ..." : "💾 حفظ إعدادات التحويل"}
-      </button>
+        {saveMutation.isPending ? (
+          <>
+            <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+            جاري الحفظ...
+          </>
+        ) : (
+          "حفظ إعدادات التحويل"
+        )}
+      </Button>
 
-      {toast && <Toast message={toast.msg} type={toast.type} />}
+      {ToastEl}
     </div>
   );
 }
@@ -461,7 +556,7 @@ function HandoffTab({
 type SimMsg = { id: string; direction: "inbound" | "outbound"; content: string; timestamp: string };
 
 function SimulatorTab({ workspaceId }: { workspaceId: string }) {
-  const [phone] = useState("0500000000"); // رقم ثابت للمحاكي
+  const [phone] = useState("0500000000");
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -487,31 +582,32 @@ function SimulatorTab({ workspaceId }: { workspaceId: string }) {
   const messages: SimMsg[] = messagesQuery.data ?? [];
 
   return (
-    <div className="flex h-[600px] flex-col rounded-2xl border border-gray-200 overflow-hidden" dir="rtl">
-      {/* الهيدر */}
-      <div className="flex items-center gap-3 border-b bg-gray-900 px-4 py-3 text-white">
-        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-green-500 text-lg">
-          💬
+    <div
+      className="flex flex-col rounded-xl border overflow-hidden"
+      style={{ height: "520px" }}
+      dir="rtl"
+    >
+      <div className="flex items-center gap-3 border-b bg-muted/50 px-4 py-3">
+        <div className="h-8 w-8 rounded-full bg-green-500 flex items-center justify-center text-white shrink-0">
+          <MessageSquare className="h-4 w-4" />
         </div>
         <div>
-          <p className="text-sm font-semibold">محاكي المحادثة</p>
-          <p className="text-xs text-gray-400">زبون تجريبي — {phone}</p>
+          <p className="text-sm font-medium">محاكي المحادثة</p>
+          <p className="text-xs text-muted-foreground">{phone}</p>
         </div>
-        <div className="mr-auto flex items-center gap-1 rounded-full bg-green-500/20 px-2.5 py-0.5 text-xs text-green-400">
-          <span className="h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse" />
+        <Badge variant="outline" className="mr-auto text-xs text-green-600 border-green-200 bg-green-50 gap-1">
+          <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
           محاكاة
-        </div>
+        </Badge>
       </div>
 
-      {/* الرسائل */}
       <div className="flex-1 overflow-y-auto bg-[#efeae2] p-4 space-y-2">
         {messages.length === 0 && !messagesQuery.isLoading && (
-          <div className="flex flex-col items-center justify-center h-full gap-2 text-center text-gray-400">
-            <span className="text-4xl">👋</span>
+          <div className="flex flex-col items-center justify-center h-full gap-2 text-muted-foreground">
+            <MessageSquare className="h-10 w-10 opacity-20" />
             <p className="text-sm">ابدأ المحادثة بكتابة رسالة أدناه</p>
           </div>
         )}
-
         {messages.map((msg) => (
           <div
             key={msg.id}
@@ -525,7 +621,7 @@ function SimulatorTab({ workspaceId }: { workspaceId: string }) {
               }`}
             >
               <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
-              <p className="mt-1 text-right text-xs text-gray-400">
+              <p className="mt-1 text-left text-[10px] text-gray-400">
                 {new Date(msg.timestamp).toLocaleTimeString("ar-SA", {
                   hour: "2-digit",
                   minute: "2-digit",
@@ -535,26 +631,27 @@ function SimulatorTab({ workspaceId }: { workspaceId: string }) {
             </div>
           </div>
         ))}
-
         {sendMutation.isPending && (
           <div className="flex justify-start">
-            <div className="rounded-2xl rounded-tl-sm bg-white px-4 py-2.5 text-sm shadow-sm text-gray-400">
-              <span className="flex gap-1 items-center">
-                <span className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: "0ms" }} />
-                <span className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: "150ms" }} />
-                <span className="h-1.5 w-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: "300ms" }} />
-              </span>
+            <div className="rounded-2xl rounded-tl-sm bg-white px-4 py-2.5 shadow-sm">
+              <div className="flex gap-1 items-center">
+                {[0, 150, 300].map((delay) => (
+                  <span
+                    key={delay}
+                    className="h-2 w-2 rounded-full bg-gray-400 animate-bounce"
+                    style={{ animationDelay: `${delay}ms` }}
+                  />
+                ))}
+              </div>
             </div>
           </div>
         )}
-
         <div ref={bottomRef} />
       </div>
 
-      {/* إدخال الرسالة */}
-      <div className="border-t bg-white px-3 py-2.5 flex gap-2 items-end">
+      <div className="border-t bg-background px-3 py-2.5 flex gap-2 items-end">
         <textarea
-          className="flex-1 resize-none rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="flex-1 resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           placeholder="اكتب رسالة تجريبية..."
           rows={1}
           value={input}
@@ -566,87 +663,39 @@ function SimulatorTab({ workspaceId }: { workspaceId: string }) {
             }
           }}
         />
-        <button
+        <Button
+          size="icon"
           onClick={handleSend}
           disabled={sendMutation.isPending || !input.trim()}
-          className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-600 text-white transition hover:bg-green-700 disabled:opacity-40"
+          className="shrink-0 bg-green-600 hover:bg-green-700"
         >
-          ↩
-        </button>
+          {sendMutation.isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <ArrowRight className="h-4 w-4" />
+          )}
+        </Button>
       </div>
     </div>
   );
 }
 
-// ─── Field Component ──────────────────────────────────────────────────────────
-
-function Field({
-  label,
-  placeholder,
-  value,
-  onChange,
-  hint,
-  mono,
-  isPassword,
-}: {
-  label: string;
-  placeholder: string;
-  value: string;
-  onChange: (v: string) => void;
-  hint?: string;
-  mono?: boolean;
-  isPassword?: boolean;
-}) {
-  const [show, setShow] = useState(false);
-
-  return (
-    <div>
-      <label className="mb-1 block text-sm font-medium text-gray-700">{label}</label>
-      <div className="relative">
-        <input
-          type={isPassword && !show ? "password" : "text"}
-          placeholder={placeholder}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-            mono ? "font-mono" : ""
-          } ${isPassword ? "pl-10" : ""}`}
-        />
-        {isPassword && (
-          <button
-            type="button"
-            onClick={() => setShow((s) => !s)}
-            className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-          >
-            {show ? "🙈" : "👁️"}
-          </button>
-        )}
-      </div>
-      {hint && <p className="mt-1 text-xs text-gray-400">{hint}</p>}
-    </div>
-  );
-}
-
-// ─── Main Page ────────────────────────────────────────────────────────────────
+// ─── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function BotSettings() {
   const params = useParams<{ workspaceId: string }>();
   const workspaceId = params.workspaceId;
   const [, navigate] = useLocation();
-  const [activeTab, setActiveTab] = useState<Tab>("zapi");
 
   const { data: allWorkspaces, isLoading } = trpc.admin.workspaces.useQuery();
-
-  const workspaceRow = allWorkspaces?.find(
-    (w: any) => w.workspace.id === workspaceId
-  );
+  const workspaceRow = allWorkspaces?.find((w: any) => w.workspace.id === workspaceId);
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center" dir="rtl">
-        <div className="text-center text-gray-400">
-          <div className="mb-3 text-4xl animate-spin">⚙️</div>
-          <p>جاري التحميل...</p>
+      <div className="flex items-center justify-center py-32" dir="rtl">
+        <div className="flex items-center gap-3 text-muted-foreground">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          جاري التحميل...
         </div>
       </div>
     );
@@ -654,111 +703,126 @@ export default function BotSettings() {
 
   if (!workspaceRow) {
     return (
-      <div className="flex min-h-screen items-center justify-center" dir="rtl">
-        <div className="text-center text-gray-400">
-          <p className="text-xl">⚠️ الـ Workspace غير موجود</p>
-          <button
-            onClick={() => navigate("/workspaces")}
-            className="mt-4 rounded-xl bg-gray-900 px-5 py-2.5 text-sm text-white"
-          >
-            العودة
-          </button>
-        </div>
+      <div className="flex flex-col items-center justify-center py-32 gap-4" dir="rtl">
+        <AlertCircle className="h-12 w-12 text-muted-foreground/30" />
+        <p className="text-muted-foreground">الـ Workspace غير موجود</p>
+        <Button variant="outline" onClick={() => navigate("/workspaces")}>
+          العودة للعملاء
+        </Button>
       </div>
     );
   }
 
   const { workspace, botSettings, zapiConfig } = workspaceRow;
 
-  const tabs: { id: Tab; label: string; icon: string; done: boolean }[] = [
-    { id: "zapi",      label: "Z-API",       icon: "📱", done: !!zapiConfig },
-    { id: "prompt",    label: "الشخصية",     icon: "🤖", done: !!(botSettings?.system_prompt && !botSettings.system_prompt.startsWith("⚠️")) },
-    { id: "handoff",   label: "التحويل",     icon: "🔄", done: !!botSettings?.handoff_phone },
-    { id: "simulator", label: "المحاكي",     icon: "💬", done: true },
+  const tabs = [
+    {
+      id: "zapi",
+      label: "Z-API",
+      icon: Smartphone,
+      done: !!zapiConfig,
+    },
+    {
+      id: "prompt",
+      label: "الشخصية",
+      icon: Bot,
+      done: !!(botSettings?.system_prompt && !botSettings.system_prompt.startsWith("⚠️")),
+    },
+    {
+      id: "handoff",
+      label: "التحويل",
+      icon: ArrowRightLeft,
+      done: !!botSettings?.handoff_phone,
+    },
+    {
+      id: "simulator",
+      label: "المحاكي",
+      icon: MessageSquare,
+      done: true,
+    },
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6" dir="rtl">
-      {/* الهيدر */}
-      <div className="mb-6 flex items-center gap-4">
-        <button
+    <div className="space-y-5" dir="rtl">
+      {/* Page Header */}
+      <div className="flex items-center gap-3">
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={() => navigate("/workspaces")}
-          className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+          className="gap-1.5"
         >
-          ← رجوع
-        </button>
+          <ChevronRight className="h-4 w-4" />
+          العملاء
+        </Button>
+        <span className="text-muted-foreground">/</span>
         <div>
-          <h1 className="text-xl font-bold text-gray-900">
-            ⚙️ إعدادات: {workspace.name}
-          </h1>
-          <p className="text-sm text-gray-400 font-mono">{workspace.slug}</p>
+          <h1 className="text-xl font-bold tracking-tight">{workspace.name}</h1>
+          <p className="text-xs text-muted-foreground font-mono">{workspace.slug}</p>
         </div>
-        {/* شريط التقدم */}
-        <div className="mr-auto flex items-center gap-2">
-          {tabs.filter((t) => t.id !== "simulator").map((t) => (
-            <div key={t.id} className="flex items-center gap-1 text-xs">
-              <span className={t.done ? "text-green-600" : "text-gray-300"}>
-                {t.done ? "✅" : "⭕"}
-              </span>
-              <span className="text-gray-500 hidden sm:inline">{t.label}</span>
-            </div>
-          ))}
+
+        {/* Progress indicators */}
+        <div className="mr-auto hidden sm:flex items-center gap-1.5">
+          {tabs
+            .filter((t) => t.id !== "simulator")
+            .map((t) => (
+              <Badge
+                key={t.id}
+                variant={t.done ? "default" : "outline"}
+                className={`gap-1 text-xs ${t.done ? "bg-green-600" : "text-muted-foreground"}`}
+              >
+                {t.done ? (
+                  <CheckCircle2 className="h-3 w-3" />
+                ) : (
+                  <AlertCircle className="h-3 w-3" />
+                )}
+                {t.label}
+              </Badge>
+            ))}
         </div>
       </div>
 
-      <div className="flex gap-6">
-        {/* القائمة الجانبية */}
-        <div className="w-44 shrink-0">
-          <nav className="space-y-1">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
-                  activeTab === tab.id
-                    ? "bg-gray-900 text-white shadow-lg"
-                    : "text-gray-600 hover:bg-white hover:shadow"
-                }`}
-              >
-                <span>{tab.icon}</span>
-                <span>{tab.label}</span>
-                {tab.id !== "simulator" && (
-                  <span className={`mr-auto text-xs ${tab.done ? "text-green-400" : "text-orange-400"}`}>
-                    {tab.done ? "✓" : "!"}
-                  </span>
-                )}
-              </button>
-            ))}
-          </nav>
-        </div>
+      {/* Tabs */}
+      <Tabs defaultValue="zapi">
+        <TabsList className="grid w-full grid-cols-4">
+          {tabs.map((tab) => (
+            <TabsTrigger key={tab.id} value={tab.id} className="gap-1.5 text-xs sm:text-sm">
+              <tab.icon className="h-4 w-4" />
+              <span className="hidden sm:inline">{tab.label}</span>
+              {tab.id !== "simulator" && (
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    tab.done ? "bg-green-500" : "bg-amber-400"
+                  }`}
+                />
+              )}
+            </TabsTrigger>
+          ))}
+        </TabsList>
 
-        {/* المحتوى */}
-        <div className="flex-1 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-          {activeTab === "zapi" && (
-            <ZApiTab
-              workspaceId={workspace.id}
-              initial={zapiConfig ?? undefined}
-            />
-          )}
-          {activeTab === "prompt" && (
+        <div className="mt-4 rounded-xl border bg-card p-6">
+          <TabsContent value="zapi" className="mt-0">
+            <ZApiTab workspaceId={workspace.id} initial={zapiConfig ?? undefined} />
+          </TabsContent>
+
+          <TabsContent value="prompt" className="mt-0">
             <PromptTab
               workspaceId={workspace.id}
               businessType={workspace.business_type}
               initial={botSettings ?? undefined}
               businessName={workspace.name}
             />
-          )}
-          {activeTab === "handoff" && (
-            <HandoffTab
-              workspaceId={workspace.id}
-              initial={botSettings ?? undefined}
-            />
-          )}
-          {activeTab === "simulator" && (
+          </TabsContent>
+
+          <TabsContent value="handoff" className="mt-0">
+            <HandoffTab workspaceId={workspace.id} initial={botSettings ?? undefined} />
+          </TabsContent>
+
+          <TabsContent value="simulator" className="mt-0">
             <SimulatorTab workspaceId={workspace.id} />
-          )}
+          </TabsContent>
         </div>
-      </div>
+      </Tabs>
     </div>
   );
 }

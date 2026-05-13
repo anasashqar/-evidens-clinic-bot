@@ -1,37 +1,67 @@
 /**
- * ═══════════════════════════════════════════════════════════════════
- *  Workspaces.tsx — صفحة إدارة العملاء (Super Admin)
- *
- *  الوظائف:
- *  - عرض كل الـ workspaces مع حالتها
- *  - إنشاء workspace جديد
- *  - تفعيل / تعطيل workspace
- *  - الانتقال لصفحة إعدادات كل workspace
- * ═══════════════════════════════════════════════════════════════════
+ * Workspaces.tsx — إدارة العملاء (Super Admin)
+ * ملاحظة: داخل DashboardLayout — لا min-h-screen هنا
  */
 
 import { useState } from "react";
-import { trpc } from "../lib/trpc"; // عدّل المسار حسب مشروعك
+import { trpc } from "../lib/trpc";
 import { useLocation } from "wouter";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import {
+  Building2,
+  ShoppingBag,
+  UtensilsCrossed,
+  Home,
+  Briefcase,
+  Plus,
+  CheckCircle2,
+  AlertCircle,
+  Settings,
+  MessageSquare,
+  Search,
+  Users,
+  Bot,
+  Activity,
+  Loader2,
+} from "lucide-react";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
 type BusinessType = "clinic" | "store" | "restaurant" | "real_estate" | "other";
 
-const BUSINESS_TYPE_LABELS: Record<BusinessType, { label: string; icon: string; color: string }> = {
-  clinic:      { label: "عيادة",     icon: "🏥", color: "bg-blue-50 text-blue-700 border-blue-200" },
-  store:       { label: "متجر",      icon: "🛍️", color: "bg-purple-50 text-purple-700 border-purple-200" },
-  restaurant:  { label: "مطعم",      icon: "🍽️", color: "bg-orange-50 text-orange-700 border-orange-200" },
-  real_estate: { label: "عقارات",    icon: "🏢", color: "bg-green-50 text-green-700 border-green-200" },
-  other:       { label: "أخرى",      icon: "💼", color: "bg-gray-50 text-gray-700 border-gray-200" },
+const BUSINESS_TYPES: Record<
+  BusinessType,
+  { label: string; Icon: React.ElementType; color: string; bg: string }
+> = {
+  clinic:      { label: "عيادة",   Icon: Building2,       color: "text-blue-600",   bg: "bg-blue-50" },
+  store:       { label: "متجر",    Icon: ShoppingBag,     color: "text-purple-600", bg: "bg-purple-50" },
+  restaurant:  { label: "مطعم",    Icon: UtensilsCrossed, color: "text-orange-600", bg: "bg-orange-50" },
+  real_estate: { label: "عقارات",  Icon: Home,            color: "text-green-600",  bg: "bg-green-50" },
+  other:       { label: "أخرى",    Icon: Briefcase,       color: "text-gray-600",   bg: "bg-gray-50" },
 };
 
 // ─── Modal: Create Workspace ───────────────────────────────────────────────────
 
 function CreateWorkspaceModal({
+  open,
   onClose,
   onSuccess,
 }: {
+  open: boolean;
   onClose: () => void;
   onSuccess: () => void;
 }) {
@@ -47,10 +77,10 @@ function CreateWorkspaceModal({
     onSuccess: () => {
       onSuccess();
       onClose();
+      setForm({ name: "", slug: "", business_type: "clinic", owner_email: "" });
     },
   });
 
-  // توليد slug تلقائي من الاسم
   const handleNameChange = (name: string) => {
     const slug = name
       .toLowerCase()
@@ -79,71 +109,66 @@ function CreateWorkspaceModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" dir="rtl">
-        <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-xl font-bold text-gray-900">إضافة عميل جديد</h2>
-          <button
-            onClick={onClose}
-            className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-          >
-            ✕
-          </button>
-        </div>
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-md" dir="rtl">
+        <DialogHeader>
+          <DialogTitle>إضافة عميل جديد</DialogTitle>
+        </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-4 mt-2">
           {/* اسم البزنس */}
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              اسم البزنس <span className="text-red-500">*</span>
-            </label>
-            <input
-              className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                errors.name ? "border-red-400" : "border-gray-300"
-              }`}
-              placeholder="مثال: عيادة النور للجلدية"
+          <div className="space-y-1.5">
+            <Label>
+              اسم البزنس <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              placeholder="عيادة النور للجلدية"
               value={form.name}
               onChange={(e) => handleNameChange(e.target.value)}
+              className={errors.name ? "border-destructive" : ""}
             />
-            {errors.name && <p className="mt-1 text-xs text-red-500">{errors.name}</p>}
+            {errors.name && (
+              <p className="text-xs text-destructive">{errors.name}</p>
+            )}
           </div>
 
           {/* Slug */}
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              المعرف (Slug) <span className="text-red-500">*</span>
-            </label>
-            <input
-              className={`w-full rounded-lg border px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                errors.slug ? "border-red-400" : "border-gray-300"
-              }`}
+          <div className="space-y-1.5">
+            <Label>
+              المعرف (Slug) <span className="text-destructive">*</span>
+            </Label>
+            <Input
               placeholder="al-noor-clinic"
               value={form.slug}
               onChange={(e) => setForm((f) => ({ ...f, slug: e.target.value }))}
+              className={`font-mono text-sm ${errors.slug ? "border-destructive" : ""}`}
+              dir="ltr"
             />
             {errors.slug ? (
-              <p className="mt-1 text-xs text-red-500">{errors.slug}</p>
+              <p className="text-xs text-destructive">{errors.slug}</p>
             ) : (
-              <p className="mt-1 text-xs text-gray-400">يُستخدم داخلياً للتوجيه — لا يمكن تغييره لاحقاً</p>
+              <p className="text-xs text-muted-foreground">
+                يُستخدم داخلياً — لا يمكن تغييره لاحقاً
+              </p>
             )}
           </div>
 
           {/* نوع البزنس */}
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">نوع البزنس</label>
+          <div className="space-y-2">
+            <Label>نوع البزنس</Label>
             <div className="grid grid-cols-3 gap-2">
-              {(Object.entries(BUSINESS_TYPE_LABELS) as [BusinessType, any][]).map(
-                ([type, { label, icon }]) => (
+              {(Object.entries(BUSINESS_TYPES) as [BusinessType, any][]).map(
+                ([type, { label, Icon }]) => (
                   <button
                     key={type}
                     onClick={() => setForm((f) => ({ ...f, business_type: type }))}
-                    className={`flex flex-col items-center gap-1 rounded-xl border-2 py-3 text-xs font-medium transition-all ${
+                    className={`flex flex-col items-center gap-1.5 rounded-xl border-2 py-3 px-2 text-xs font-medium transition-all ${
                       form.business_type === type
-                        ? "border-blue-500 bg-blue-50 text-blue-700"
-                        : "border-gray-200 text-gray-500 hover:border-gray-300"
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:border-muted-foreground/40"
                     }`}
                   >
-                    <span className="text-xl">{icon}</span>
+                    <Icon className="h-5 w-5" />
                     {label}
                   </button>
                 )
@@ -151,101 +176,106 @@ function CreateWorkspaceModal({
             </div>
           </div>
 
-          {/* البريد الإلكتروني (اختياري) */}
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
+          {/* البريد الإلكتروني */}
+          <div className="space-y-1.5">
+            <Label>
               بريد صاحب البزنس{" "}
-              <span className="text-xs font-normal text-gray-400">(اختياري)</span>
-            </label>
-            <input
+              <span className="text-xs font-normal text-muted-foreground">(اختياري)</span>
+            </Label>
+            <Input
               type="email"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="owner@example.com"
               value={form.owner_email}
               onChange={(e) => setForm((f) => ({ ...f, owner_email: e.target.value }))}
+              dir="ltr"
             />
           </div>
         </div>
 
         {createMutation.error && (
-          <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-600">
+          <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive mt-2">
+            <AlertCircle className="h-4 w-4 shrink-0" />
             {createMutation.error.message}
-          </p>
+          </div>
         )}
 
-        <div className="mt-6 flex gap-3">
-          <button
+        <div className="flex gap-2 mt-4">
+          <Button
             onClick={handleSubmit}
             disabled={createMutation.isPending}
-            className="flex-1 rounded-xl bg-blue-600 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50"
+            className="flex-1"
           >
-            {createMutation.isPending ? "جاري الإنشاء..." : "إنشاء العميل"}
-          </button>
-          <button
-            onClick={onClose}
-            className="rounded-xl border border-gray-200 px-5 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50"
-          >
+            {createMutation.isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+                جاري الإنشاء...
+              </>
+            ) : (
+              "إنشاء العميل"
+            )}
+          </Button>
+          <Button variant="outline" onClick={onClose}>
             إلغاء
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
-// ─── WorkspaceCard ─────────────────────────────────────────────────────────────
+// ─── Workspace Card ────────────────────────────────────────────────────────────
 
-function WorkspaceCard({
-  row,
-  onRefresh,
-}: {
-  row: any;
-  onRefresh: () => void;
-}) {
+function WorkspaceCard({ row, onRefresh }: { row: any; onRefresh: () => void }) {
   const [, setLocation] = useLocation();
   const { workspace, botSettings, zapiConfig } = row;
-  const typeInfo = BUSINESS_TYPE_LABELS[workspace.business_type as BusinessType] ?? BUSINESS_TYPE_LABELS.other;
+  const typeInfo = BUSINESS_TYPES[workspace.business_type as BusinessType] ?? BUSINESS_TYPES.other;
+  const { Icon } = typeInfo;
 
   const toggleMutation = trpc.admin.updateWorkspace.useMutation({
     onSuccess: onRefresh,
   });
 
-  const isConfigured = !!(zapiConfig && botSettings?.system_prompt && !botSettings.system_prompt.startsWith("⚠️"));
+  const isConfigured = !!(
+    zapiConfig &&
+    botSettings?.system_prompt &&
+    !botSettings.system_prompt.startsWith("⚠️")
+  );
   const hasPendingSetup = !zapiConfig || !botSettings;
 
   return (
-    <div
-      className={`group relative overflow-hidden rounded-2xl border bg-white transition-all duration-200 hover:shadow-lg ${
-        workspace.is_active ? "border-gray-200" : "border-gray-100 opacity-60"
+    <Card
+      className={`relative overflow-hidden transition-all duration-200 hover:shadow-md ${
+        !workspace.is_active ? "opacity-60" : ""
       }`}
     >
-      {/* شريط الحالة العلوي */}
+      {/* Status bar */}
       <div
-        className={`h-1 w-full ${
+        className={`h-0.5 w-full ${
           !workspace.is_active
-            ? "bg-gray-200"
+            ? "bg-muted"
             : isConfigured
             ? "bg-gradient-to-r from-green-400 to-emerald-500"
-            : "bg-gradient-to-r from-yellow-400 to-orange-400"
+            : "bg-gradient-to-r from-amber-400 to-orange-400"
         }`}
       />
 
-      <div className="p-5">
-        {/* الهيدر */}
+      <CardHeader className="pb-0">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
             <div
-              className={`flex h-11 w-11 items-center justify-center rounded-xl border text-2xl ${typeInfo.color}`}
+              className={`flex h-10 w-10 items-center justify-center rounded-xl ${typeInfo.bg} ${typeInfo.color} shrink-0`}
             >
-              {typeInfo.icon}
+              <Icon className="h-5 w-5" />
             </div>
-            <div>
-              <h3 className="font-bold text-gray-900">{workspace.name}</h3>
-              <p className="text-xs text-gray-400 font-mono">{workspace.slug}</p>
+            <div className="min-w-0">
+              <h3 className="font-semibold text-sm truncate">{workspace.name}</h3>
+              <p className="text-xs text-muted-foreground font-mono truncate">
+                {workspace.slug}
+              </p>
             </div>
           </div>
 
-          {/* تبديل التفعيل */}
+          {/* Toggle */}
           <button
             onClick={() =>
               toggleMutation.mutate({
@@ -254,156 +284,137 @@ function WorkspaceCard({
               })
             }
             title={workspace.is_active ? "تعطيل" : "تفعيل"}
-            className={`relative h-6 w-11 rounded-full transition-colors ${
-              workspace.is_active ? "bg-green-500" : "bg-gray-300"
+            className={`relative h-6 w-11 rounded-full transition-colors shrink-0 ${
+              workspace.is_active ? "bg-green-500" : "bg-muted-foreground/30"
             }`}
           >
             <span
-              className={`absolute top-0.5 h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+              className={`absolute top-0.5 h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform ${
                 workspace.is_active ? "translate-x-5" : "translate-x-0.5"
               }`}
             />
           </button>
         </div>
+      </CardHeader>
 
-        {/* الإحصائيات السريعة */}
-        <div className="mt-4 grid grid-cols-2 gap-2">
-          <StatusBadge
-            icon="📱"
-            label="Z-API"
-            ok={!!zapiConfig}
-            okText={zapiConfig?.instance_id?.slice(0, 12) + "…"}
-            failText="غير مربوط"
-          />
-          <StatusBadge
-            icon="🤖"
-            label="البوت"
-            ok={isConfigured}
-            okText="مُعدَّ"
-            failText={botSettings ? "يحتاج prompt" : "غير مُعدَّ"}
-          />
+      <CardContent className="pt-4 space-y-3">
+        {/* Status badges */}
+        <div className="grid grid-cols-2 gap-2">
+          <div
+            className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs ${
+              zapiConfig
+                ? "border-green-200 bg-green-50 text-green-700"
+                : "border-red-200 bg-red-50 text-red-600"
+            }`}
+          >
+            {zapiConfig ? (
+              <CheckCircle2 className="h-3 w-3 shrink-0" />
+            ) : (
+              <AlertCircle className="h-3 w-3 shrink-0" />
+            )}
+            <span className="truncate font-medium">
+              {zapiConfig ? zapiConfig.instance_id?.slice(0, 10) + "…" : "غير مربوط"}
+            </span>
+          </div>
+          <div
+            className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs ${
+              isConfigured
+                ? "border-green-200 bg-green-50 text-green-700"
+                : "border-amber-200 bg-amber-50 text-amber-700"
+            }`}
+          >
+            {isConfigured ? (
+              <CheckCircle2 className="h-3 w-3 shrink-0" />
+            ) : (
+              <AlertCircle className="h-3 w-3 shrink-0" />
+            )}
+            <span className="font-medium">
+              {isConfigured ? "البوت مُعدَّ" : botSettings ? "يحتاج prompt" : "غير مُعدَّ"}
+            </span>
+          </div>
         </div>
 
-        {/* بريد المالك */}
+        {/* Owner email */}
         {workspace.owner_email && (
-          <p className="mt-3 text-xs text-gray-400">
-            📧 {workspace.owner_email}
-          </p>
+          <p className="text-xs text-muted-foreground truncate">{workspace.owner_email}</p>
         )}
 
-        {/* تنبيه الإعداد */}
+        {/* Warning */}
         {hasPendingSetup && workspace.is_active && (
-          <div className="mt-3 flex items-center gap-2 rounded-lg bg-amber-50 p-2.5 text-xs text-amber-700">
-            <span>⚠️</span>
-            <span>يحتاج إعداد قبل التشغيل</span>
+          <div className="flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-2 text-xs text-amber-700">
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+            يحتاج إعداد قبل التشغيل
           </div>
         )}
 
-        {/* أزرار الإجراءات */}
-        <div className="mt-4 flex gap-2">
-          <button
+        {/* Actions */}
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            className="flex-1 h-8 text-xs"
             onClick={() => setLocation(`/workspace/${workspace.id}/settings`)}
-            className="flex-1 rounded-xl bg-gray-900 py-2 text-xs font-semibold text-white transition hover:bg-gray-800"
           >
-            ⚙️ الإعدادات
-          </button>
-          <button
-            onClick={() => setLocation(`/dashboard`)}
-            className="flex-1 rounded-xl border border-gray-200 py-2 text-xs font-semibold text-gray-700 transition hover:bg-gray-50"
+            <Settings className="h-3.5 w-3.5 ml-1.5" />
+            الإعدادات
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1 h-8 text-xs"
+            onClick={() => setLocation("/dashboard")}
           >
-            💬 المحادثات
-          </button>
+            <MessageSquare className="h-3.5 w-3.5 ml-1.5" />
+            المحادثات
+          </Button>
         </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── StatusBadge ──────────────────────────────────────────────────────────────
-
-function StatusBadge({
-  icon,
-  label,
-  ok,
-  okText,
-  failText,
-}: {
-  icon: string;
-  label: string;
-  ok: boolean;
-  okText: string;
-  failText: string;
-}) {
-  return (
-    <div
-      className={`flex items-center gap-2 rounded-lg border p-2 text-xs ${
-        ok
-          ? "border-green-100 bg-green-50 text-green-700"
-          : "border-red-100 bg-red-50 text-red-600"
-      }`}
-    >
-      <span>{icon}</span>
-      <div className="min-w-0">
-        <p className="font-medium truncate">{ok ? okText : failText}</p>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 
 // ─── Stats Bar ─────────────────────────────────────────────────────────────────
 
 function StatsBar({ workspaces }: { workspaces: any[] }) {
-  const active = workspaces.filter((w) => w.workspace.is_active).length;
   const total = workspaces.length;
+  const active = workspaces.filter((w) => w.workspace.is_active).length;
   const configured = workspaces.filter(
-    (w) => w.zapiConfig && w.botSettings?.system_prompt && !w.botSettings.system_prompt.startsWith("⚠️")
+    (w) =>
+      w.zapiConfig &&
+      w.botSettings?.system_prompt &&
+      !w.botSettings.system_prompt.startsWith("⚠️")
   ).length;
+  const needsSetup = total - configured;
 
-  const counts = Object.entries(BUSINESS_TYPE_LABELS).map(([type, { label, icon }]) => ({
-    type,
-    label,
-    icon,
-    count: workspaces.filter((w) => w.workspace.business_type === type).length,
-  }));
+  const stats = [
+    { label: "إجمالي العملاء", value: total, Icon: Users, color: "text-blue-600 bg-blue-50" },
+    { label: "نشط الآن",       value: active, Icon: Activity, color: "text-green-600 bg-green-50" },
+    { label: "مُعدَّ بالكامل",  value: configured, Icon: Bot,  color: "text-purple-600 bg-purple-50" },
+    { label: "يحتاج إعداد",    value: needsSetup, Icon: AlertCircle, color: "text-amber-600 bg-amber-50" },
+  ];
 
   return (
-    <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-      <StatCard label="إجمالي العملاء" value={total} icon="🏢" color="bg-blue-50 text-blue-700" />
-      <StatCard label="نشط الآن" value={active} icon="✅" color="bg-green-50 text-green-700" />
-      <StatCard label="مُعدَّ بالكامل" value={configured} icon="🤖" color="bg-purple-50 text-purple-700" />
-      <StatCard
-        label="يحتاج إعداد"
-        value={total - configured}
-        icon="⚠️"
-        color="bg-amber-50 text-amber-700"
-      />
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {stats.map(({ label, value, Icon, color }) => {
+        const [textColor, bgColor] = color.split(" ");
+        return (
+          <Card key={label}>
+            <CardContent className="pt-4 pb-4">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-muted-foreground">{label}</p>
+                <div className={`h-7 w-7 rounded-lg ${bgColor} flex items-center justify-center`}>
+                  <Icon className={`h-3.5 w-3.5 ${textColor}`} />
+                </div>
+              </div>
+              <p className={`text-2xl font-bold mt-2 ${textColor}`}>{value}</p>
+            </CardContent>
+          </Card>
+        );
+      })}
     </div>
   );
 }
 
-function StatCard({
-  label,
-  value,
-  icon,
-  color,
-}: {
-  label: string;
-  value: number;
-  icon: string;
-  color: string;
-}) {
-  return (
-    <div className={`rounded-2xl border p-4 ${color.replace("text-", "border-").replace("-700", "-100")} ${color.split(" ")[0]}`}>
-      <p className="text-xs font-medium opacity-70">{label}</p>
-      <div className="mt-1 flex items-baseline gap-2">
-        <span className="text-2xl font-bold">{value}</span>
-        <span className="text-lg">{icon}</span>
-      </div>
-    </div>
-  );
-}
-
-// ─── Main Page ────────────────────────────────────────────────────────────────
+// ─── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function WorkspacesPage() {
   const [showCreate, setShowCreate] = useState(false);
@@ -423,66 +434,75 @@ export default function WorkspacesPage() {
   });
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6" dir="rtl">
-      {/* الهيدر */}
-      <div className="mb-6 flex items-center justify-between">
+    <div className="space-y-6" dir="rtl">
+      {/* Page Header */}
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">إدارة العملاء</h1>
-          <p className="mt-0.5 text-sm text-gray-500">
+          <h1 className="text-2xl font-bold tracking-tight">إدارة العملاء</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
             {data?.length ?? 0} عميل مسجل في المنصة
           </p>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-200 transition hover:bg-blue-700"
-        >
-          <span>+</span> إضافة عميل
-        </button>
+        <Button onClick={() => setShowCreate(true)} className="gap-1.5">
+          <Plus className="h-4 w-4" />
+          إضافة عميل
+        </Button>
       </div>
 
-      {/* الإحصائيات */}
+      {/* Stats */}
       {data && <StatsBar workspaces={data} />}
 
-      {/* الفلاتر */}
-      <div className="mb-4 flex flex-wrap gap-2">
-        <input
-          className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          placeholder="🔍 ابحث بالاسم أو الـ slug..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <div className="flex gap-1">
-          <FilterButton label="الكل" active={filterType === "all"} onClick={() => setFilterType("all")} />
-          {(Object.entries(BUSINESS_TYPE_LABELS) as [BusinessType, any][]).map(([type, { label, icon }]) => (
-            <FilterButton
-              key={type}
-              label={`${icon} ${label}`}
-              active={filterType === type}
-              onClick={() => setFilterType(type)}
-            />
-          ))}
+      {/* Filters */}
+      <div className="flex flex-wrap gap-2">
+        <div className="relative">
+          <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            className="pr-9 w-56"
+            placeholder="ابحث بالاسم أو الـ slug..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+
+        <div className="flex gap-1 flex-wrap">
+          <FilterButton
+            label="الكل"
+            active={filterType === "all"}
+            onClick={() => setFilterType("all")}
+          />
+          {(Object.entries(BUSINESS_TYPES) as [BusinessType, any][]).map(
+            ([type, { label, Icon }]) => (
+              <FilterButton
+                key={type}
+                label={label}
+                icon={<Icon className="h-3.5 w-3.5" />}
+                active={filterType === type}
+                onClick={() => setFilterType(type)}
+              />
+            )
+          )}
         </div>
       </div>
 
-      {/* شبكة البطاقات */}
+      {/* Grid */}
       {isLoading ? (
-        <div className="flex items-center justify-center py-20 text-gray-400">
-          <div className="text-center">
-            <div className="mb-3 text-4xl animate-spin">⚙️</div>
-            <p>جاري تحميل العملاء...</p>
+        <div className="flex items-center justify-center py-24 text-muted-foreground">
+          <div className="flex items-center gap-3">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            جاري تحميل العملاء...
           </div>
         </div>
       ) : filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-gray-200 py-20 text-center text-gray-400">
-          <span className="text-5xl">🏢</span>
-          <p className="font-medium">لا يوجد عملاء</p>
-          <p className="text-sm">ابدأ بإضافة عميلك الأول</p>
-          <button
-            onClick={() => setShowCreate(true)}
-            className="mt-2 rounded-xl bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-          >
+        <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed py-20 text-center text-muted-foreground">
+          <Building2 className="h-12 w-12 opacity-20" />
+          <div>
+            <p className="font-medium">لا يوجد عملاء</p>
+            <p className="text-sm mt-1">ابدأ بإضافة عميلك الأول</p>
+          </div>
+          <Button onClick={() => setShowCreate(true)} variant="outline">
+            <Plus className="h-4 w-4 ml-1.5" />
             إضافة عميل
-          </button>
+          </Button>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -492,37 +512,38 @@ export default function WorkspacesPage() {
         </div>
       )}
 
-      {/* Modal الإنشاء */}
-      {showCreate && (
-        <CreateWorkspaceModal
-          onClose={() => setShowCreate(false)}
-          onSuccess={() => refetch()}
-        />
-      )}
+      <CreateWorkspaceModal
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onSuccess={() => refetch()}
+      />
     </div>
   );
 }
 
-// ─── FilterButton ─────────────────────────────────────────────────────────────
+// ─── FilterButton ──────────────────────────────────────────────────────────────
 
 function FilterButton({
   label,
+  icon,
   active,
   onClick,
 }: {
   label: string;
+  icon?: React.ReactNode;
   active: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       onClick={onClick}
-      className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
+      className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
         active
-          ? "bg-gray-900 text-white shadow"
-          : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"
+          ? "bg-foreground text-background shadow-sm"
+          : "bg-background border border-border text-muted-foreground hover:text-foreground hover:bg-muted"
       }`}
     >
+      {icon}
       {label}
     </button>
   );

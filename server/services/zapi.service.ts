@@ -25,6 +25,7 @@ export interface ZApiWebhookPayload {
   senderName?: string;
   participantPhone?: string;
   type?: string;
+  isGroup?: boolean;           // جديد: للتصفية الصارمة للمجموعات
   text?: { message?: string };
   image?: { caption?: string; imageUrl?: string; mimeType?: string };
   audio?: { audioUrl?: string; mimeType?: string };
@@ -122,28 +123,41 @@ ${params.summary}
 export function extractMessageFromWebhook(
   payload: ZApiWebhookPayload
 ): ExtractedWebhookMessage | null {
-  // تجاهل الرسائل الصادرة منّا
+  // 1. تجاهل الرسائل الصادرة منّا
   if (payload.fromMe) return null;
 
-  // instanceId ضروري للـ workspace routing
+  // 2. التحقق من وجود instanceId (ضروري للتوجيه)
   const instanceId = payload.instanceId || "";
-  if (!instanceId) {
-    console.warn("[Z-API] Webhook missing instanceId — cannot route to workspace");
-    console.log("Webhook payload:", JSON.stringify(payload, null, 2));
+  if (!instanceId) return null;
+
+  // 3. تجاهل أحداث الحالة (ليست رسائل حقيقية)
+  const IGNORED_TYPES = ["DeliveryCallback", "ReadCallback", "PlayedCallback", "presence"];
+  if (payload.type && IGNORED_TYPES.includes(payload.type)) return null;
+
+  // 4. كشف المجموعات (بشكل صارم جداً)
+  // في Z-API، أي رسالة تحتوي على participantPhone أو isGroup هي رسالة مجموعة
+  if (payload.isGroup === true) return null;
+  
+  if (payload.participantPhone && payload.participantPhone !== payload.phone) {
     return null;
   }
 
-  // تجاهل أحداث الحالة — ليست رسائل حقيقية
-// تجاهل أحداث الحالة فقط إذا ما فيها رسالة نصية
-const IGNORED_TYPES = ["DeliveryCallback", "ReadCallback", "PlayedCallback", "presence"];
-if (payload.type && IGNORED_TYPES.includes(payload.type)) return null;
+  const phone = payload.phone || "";
+  const participantPhone = payload.participantPhone || "";
 
-  const phone = payload.phone || payload.participantPhone || "";
+  // التحقق من الصيغ المعروفة للمجموعات في WhatsApp
+  const isGroupJid = (jid: string) => 
+    jid.includes("@g.us") || 
+    jid.includes("-group") || 
+    jid.includes("@temp") || 
+    jid.includes("@broadcast");
+
+  if (isGroupJid(phone) || isGroupJid(participantPhone)) {
+    return null;
+  }
+
+  // 5. استخراج المحتوى حسب النوع
   if (!phone) return null;
-
-  // تجاهل رسائل المجموعات — phone المجموعة يحتوي على @g.us أو participantPhone
-  if (phone.includes("@g.us") || phone.includes("-group")) return null;
-  if (payload.participantPhone && payload.phone !== payload.participantPhone) return null;
 
   if (payload.text?.message) {
     return { instanceId, phone, message: payload.text.message, messageType: "text" };
@@ -154,7 +168,9 @@ if (payload.type && IGNORED_TYPES.includes(payload.type)) return null;
   if (payload.type === "video" && payload.video?.caption) {
     return { instanceId, phone, message: payload.video.caption, messageType: "video" };
   }
-  if (payload.type) {
+
+  // إذا كان نوعاً آخر (صوت، مستند، إلخ) ولكن له نوع محدد
+  if (payload.type && payload.type !== "text") {
     return { instanceId, phone, message: `[${payload.type}]`, messageType: payload.type };
   }
 
