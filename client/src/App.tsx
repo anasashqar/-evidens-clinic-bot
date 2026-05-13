@@ -6,7 +6,6 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import BotSettings from "./pages/BotSettings";
 import Dashboard from "./pages/Dashboard";
-import Simulator from "./pages/Simulator";
 import Workspaces from "./pages/Workspaces";
 
 function Router() {
@@ -14,11 +13,9 @@ function Router() {
     <Switch>
       <Route path={"/"} component={Dashboard} />
       <Route path={"/dashboard"} component={Dashboard} />
-      <Route path={"/simulator"} component={Simulator} />
       <Route path={"/workspaces"} component={Workspaces} />
       <Route path={"/workspace/:workspaceId/settings"} component={BotSettings} />
       <Route path={"/404"} component={NotFound} />
-      {/* Final fallback route */}
       <Route component={NotFound} />
     </Switch>
   );

@@ -1,340 +1,440 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { trpc } from "@/lib/trpc";
-import { Activity, Calendar, MessageSquare, Users, TestTube2 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+/**
+ * ═══════════════════════════════════════════════════════════════════
+ *  Dashboard.tsx — لوحة تحكم SaaS متعددة العملاء
+ *
+ *  - اختيار workspace من القائمة العلوية
+ *  - إحصائيات حية لكل workspace
+ *  - جداول Handoffs + المحادثات مع بنية البيانات الصحيحة
+ * ═══════════════════════════════════════════════════════════════════
+ */
+
 import { useState } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { trpc } from "../lib/trpc";
+import { useLocation } from "wouter";
+
+// ─── Status helpers ────────────────────────────────────────────────────────────
+
+const STATUS_MAP: Record<string, { label: string; cls: string }> = {
+  active:      { label: "نشطة",      cls: "bg-green-100 text-green-700" },
+  handoff:     { label: "تحويل",     cls: "bg-yellow-100 text-yellow-700" },
+  closed:      { label: "مغلقة",     cls: "bg-gray-100 text-gray-500" },
+  pending:     { label: "بانتظار",   cls: "bg-orange-100 text-orange-700" },
+  in_progress: { label: "جارية",     cls: "bg-blue-100 text-blue-700" },
+  completed:   { label: "مكتملة",    cls: "bg-green-100 text-green-700" },
+};
+
+function StatusBadge({ status }: { status: string }) {
+  const s = STATUS_MAP[status] ?? { label: status, cls: "bg-gray-100 text-gray-600" };
+  return (
+    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${s.cls}`}>
+      {s.label}
+    </span>
+  );
+}
+
+// ─── Metric Card ───────────────────────────────────────────────────────────────
+
+function MetricCard({
+  label,
+  value,
+  icon,
+  color,
+  loading,
+}: {
+  label: string;
+  value: number | undefined;
+  icon: string;
+  color: string;
+  loading: boolean;
+}) {
+  return (
+    <div className={`rounded-2xl border p-5 ${color}`}>
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-medium opacity-75">{label}</p>
+        <span className="text-2xl">{icon}</span>
+      </div>
+      <p className="mt-3 text-3xl font-bold">
+        {loading ? <span className="text-lg opacity-50">...</span> : (value ?? 0)}
+      </p>
+    </div>
+  );
+}
+
+// ─── Conversation Dialog ───────────────────────────────────────────────────────
+
+function ConversationDialog({
+  conversationId,
+  onClose,
+}: {
+  conversationId: string;
+  onClose: () => void;
+}) {
+  const { data: messages, isLoading } = trpc.admin.conversationMessages.useQuery({
+    conversationId,
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" dir="rtl">
+      <div className="flex w-full max-w-lg flex-col rounded-2xl bg-white shadow-2xl" style={{ maxHeight: "80vh" }}>
+        {/* Header */}
+        <div className="flex items-center justify-between border-b px-5 py-4">
+          <h3 className="font-bold text-gray-900">💬 رسائل المحادثة</h3>
+          <button
+            onClick={onClose}
+            className="rounded-lg p-2 text-gray-400 hover:bg-gray-100"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto bg-[#efeae2] p-4 space-y-2">
+          {isLoading && (
+            <p className="text-center text-sm text-gray-400 py-10">جاري التحميل...</p>
+          )}
+          {messages?.map((msg: any) => (
+            <div
+              key={msg.id}
+              className={`flex ${msg.direction === "inbound" ? "justify-end" : "justify-start"}`}
+            >
+              <div
+                className={`max-w-xs rounded-2xl px-4 py-2.5 text-sm shadow-sm ${
+                  msg.direction === "inbound"
+                    ? "rounded-tr-sm bg-[#d9fdd3] text-gray-800"
+                    : "rounded-tl-sm bg-white text-gray-800"
+                }`}
+              >
+                <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                <p className="mt-1 text-right text-xs text-gray-400">
+                  {new Date(msg.created_at).toLocaleTimeString("ar-SA", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </p>
+              </div>
+            </div>
+          ))}
+          {messages?.length === 0 && !isLoading && (
+            <p className="text-center text-sm text-gray-400 py-10">لا توجد رسائل</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Dashboard ────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
-  // جلب مساحات العمل لاختيار أول مساحة عمل (أو يمكنك إضافة قائمة منسدلة لاحقاً لاختيار العميل)
-  const { data: workspaces } = trpc.admin.workspaces.useQuery();
-  const currentWorkspaceId = workspaces?.[0]?.workspace?.id || "";
+  const [, navigate] = useLocation();
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>("");
+  const [activeTab, setActiveTab] = useState<"handoffs" | "conversations">("handoffs");
+  const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
 
-  // تحديث أسماء الروابط وتمرير workspaceId
+  // ── Data fetching ──────────────────────────────────────────────────────────
+
+  const { data: workspaces, isLoading: wsLoading } = trpc.admin.workspaces.useQuery(undefined, {
+    onSuccess: (data: any[]) => {
+      if (data?.length && !selectedWorkspaceId) {
+        setSelectedWorkspaceId(data[0].workspace.id);
+      }
+    },
+  } as any);
+
+  const workspaceId = selectedWorkspaceId || (workspaces?.[0]?.workspace?.id ?? "");
+
   const { data: metrics, isLoading: metricsLoading } = trpc.admin.workspaceMetrics.useQuery(
-    { workspaceId: currentWorkspaceId },
-    { enabled: !!currentWorkspaceId }
+    { workspaceId },
+    { enabled: !!workspaceId }
   );
-  const { data: conversations } = trpc.admin.workspaceConversations.useQuery(
-    { workspaceId: currentWorkspaceId },
-    { enabled: !!currentWorkspaceId }
-  );
-  const { data: handoffs, refetch: refetchHandoffs } = trpc.admin.workspaceHandoffs.useQuery(
-    { workspaceId: currentWorkspaceId },
-    { enabled: !!currentWorkspaceId }
-  );
-  
-  // قم بإيقاف مسار المواعيد حالياً لأنه غير موجود في routers.ts
-  const appointments: any[] = []; // const { data: appointments } = trpc.admin.appointments.useQuery();
 
-  const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
-  const { data: messages } = trpc.admin.conversationMessages.useQuery(
-    { conversationId: selectedConversation! },
-    { enabled: !!selectedConversation }
+  const { data: handoffs, refetch: refetchHandoffs } = trpc.admin.workspaceHandoffs.useQuery(
+    { workspaceId },
+    { enabled: !!workspaceId, refetchInterval: 5000 }
+  );
+
+  const { data: conversations } = trpc.admin.workspaceConversations.useQuery(
+    { workspaceId },
+    { enabled: !!workspaceId, refetchInterval: 5000 }
   );
 
   const updateHandoffMutation = trpc.admin.updateHandoff.useMutation({
-    onSuccess: () => {
-      refetchHandoffs();
-    },
+    onSuccess: () => refetchHandoffs(),
   });
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString('pt-BR');
-  };
+  // ── Current workspace info ─────────────────────────────────────────────────
 
-  const formatPhone = (phone: string) => {
-    // Format: 5511999999999 -> (11) 99999-9999
-    if (phone.length === 13 && phone.startsWith('55')) {
-      const ddd = phone.substring(2, 4);
-      const firstPart = phone.substring(4, 9);
-      const secondPart = phone.substring(9);
-      return `(${ddd}) ${firstPart}-${secondPart}`;
-    }
-    return phone;
-  };
+  const currentWs = workspaces?.find((w: any) => w.workspace.id === workspaceId);
+  const wsName = currentWs?.workspace?.name ?? "...";
 
-  const getStatusBadge = (status: string) => {
-    const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-      active: "default",
-      handoff: "secondary",
-      completed: "outline",
-      pending: "secondary",
-      confirmed: "default",
-      cancelled: "destructive",
-    };
-    return <Badge variant={variants[status] || "outline"}>{status}</Badge>;
-  };
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-7xl mx-auto space-y-8">
-        {/* Header */}
-        <div className="flex justify-between items-start">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Painel Administrativo</h1>
-            <p className="text-gray-600 mt-2">EviDenS Clinic - WhatsApp Bot</p>
+    <div className="min-h-screen bg-gray-50" dir="rtl">
+      {/* Top bar */}
+      <header className="border-b bg-white px-6 py-4">
+        <div className="mx-auto flex max-w-7xl items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div>
+              <h1 className="text-lg font-bold text-gray-900">🤖 EviDenS Bot</h1>
+              <p className="text-xs text-gray-400">لوحة التحكم</p>
+            </div>
+
+            {/* Workspace Selector */}
+            {!wsLoading && workspaces && workspaces.length > 0 && (
+              <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-1.5">
+                <span className="text-xs text-gray-500">العميل:</span>
+                <select
+                  className="bg-transparent text-sm font-semibold text-gray-800 focus:outline-none"
+                  value={workspaceId}
+                  onChange={(e) => setSelectedWorkspaceId(e.target.value)}
+                >
+                  {workspaces.map((w: any) => (
+                    <option key={w.workspace.id} value={w.workspace.id}>
+                      {w.workspace.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
-          <a href="/simulator">
-            <Button variant="outline" className="gap-2">
-              <TestTube2 className="h-4 w-4" />
-              Simulador de Testes
-            </Button>
-          </a>
+
+          {/* Actions */}
+          <div className="flex items-center gap-2">
+            {workspaceId && (
+              <button
+                onClick={() => navigate(`/workspace/${workspaceId}/settings`)}
+                className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                ⚙️ الإعدادات
+              </button>
+            )}
+            <button
+              onClick={() => navigate("/workspaces")}
+              className="rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+            >
+              🏢 العملاء
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-7xl p-6 space-y-6">
+
+        {/* Workspace Name */}
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">{wsName}</h2>
+          <p className="text-sm text-gray-500">
+            slug: <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">{currentWs?.workspace?.slug}</code>
+          </p>
         </div>
 
-        {/* Metrics Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Conversas Hoje</CardTitle>
-              <MessageSquare className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {metricsLoading ? "..." : metrics?.totalConversations || 0}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Handoffs Hoje</CardTitle>
-              <Users className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {metricsLoading ? "..." : metrics?.totalHandoffs || 0}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Handoffs Pendentes</CardTitle>
-              <Activity className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {metricsLoading ? "..." : metrics?.pendingHandoffs || 0}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Próximas Consultas</CardTitle>
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {metricsLoading ? "..." : 0}
-              </div>
-            </CardContent>
-          </Card>
+        {/* Metrics */}
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <MetricCard
+            label="إجمالي المحادثات"
+            value={metrics?.totalConversations}
+            icon="💬"
+            color="bg-blue-50 border-blue-100 text-blue-900"
+            loading={metricsLoading}
+          />
+          <MetricCard
+            label="محادثات نشطة"
+            value={metrics?.activeConversations}
+            icon="🟢"
+            color="bg-green-50 border-green-100 text-green-900"
+            loading={metricsLoading}
+          />
+          <MetricCard
+            label="Handoffs بانتظار"
+            value={metrics?.pendingHandoffs}
+            icon="⏳"
+            color="bg-orange-50 border-orange-100 text-orange-900"
+            loading={metricsLoading}
+          />
+          <MetricCard
+            label="إجمالي المرضى"
+            value={metrics?.totalPatients}
+            icon="👥"
+            color="bg-purple-50 border-purple-100 text-purple-900"
+            loading={metricsLoading}
+          />
         </div>
 
         {/* Tabs */}
-        <Tabs defaultValue="handoffs" className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="handoffs">Handoffs</TabsTrigger>
-            <TabsTrigger value="conversations">Conversas</TabsTrigger>
-            <TabsTrigger value="appointments">Agendamentos</TabsTrigger>
-          </TabsList>
-
-          {/* Handoffs Tab */}
-          <TabsContent value="handoffs" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Handoffs Recentes</CardTitle>
-                <CardDescription>
-                  Transferências de atendimento para a equipe humana
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Paciente</TableHead>
-                      <TableHead>Telefone</TableHead>
-                      <TableHead>Motivo</TableHead>
-                      <TableHead>Resumo</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Data</TableHead>
-                      <TableHead>Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {handoffs?.map((handoff: any) => (
-                      <TableRow key={handoff.id}>
-                        <TableCell className="font-medium">
-                          {handoff.patient_name || "Sem nome"}
-                        </TableCell>
-                        <TableCell>{formatPhone(handoff.patient_phone)}</TableCell>
-                        <TableCell>{handoff.reason}</TableCell>
-                        <TableCell className="max-w-xs truncate">
-                          {handoff.summary || "-"}
-                        </TableCell>
-                        <TableCell>{getStatusBadge(handoff.status)}</TableCell>
-                        <TableCell>{formatDate(handoff.created_at)}</TableCell>
-                        <TableCell>
-                          {handoff.status === "pending" && (
-                            <Button
-                              size="sm"
-                              onClick={() =>
-                                updateHandoffMutation.mutate({
-                                  handoffId: handoff.id,
-                                  status: "completed",
-                                })
-                              }
-                            >
-                              Concluir
-                            </Button>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Conversations Tab */}
-          <TabsContent value="conversations" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Conversas Recentes</CardTitle>
-                <CardDescription>Histórico de conversas com pacientes</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Paciente</TableHead>
-                      <TableHead>Telefone</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Etapa Atual</TableHead>
-                      <TableHead>Iniciada em</TableHead>
-                      <TableHead>Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {conversations?.map((conv: any) => (
-                      <TableRow key={conv.id}>
-                        <TableCell className="font-medium">
-                          {conv.patient_name || "Sem nome"}
-                        </TableCell>
-                        <TableCell>{formatPhone(conv.patient_phone)}</TableCell>
-                        <TableCell>{getStatusBadge(conv.status)}</TableCell>
-                        <TableCell>{conv.current_step || "-"}</TableCell>
-                        <TableCell>{formatDate(conv.started_at)}</TableCell>
-                        <TableCell>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setSelectedConversation(conv.id)}
-                          >
-                            Ver Mensagens
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Appointments Tab */}
-          <TabsContent value="appointments" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Agendamentos</CardTitle>
-                <CardDescription>Consultas e procedimentos agendados</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Paciente</TableHead>
-                      <TableHead>Telefone</TableHead>
-                      <TableHead>Médico</TableHead>
-                      <TableHead>Tipo</TableHead>
-                      <TableHead>Data</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {appointments?.map((appt: any) => (
-                      <TableRow key={appt.id}>
-                        <TableCell className="font-medium">
-                          {appt.patient_name || "Sem nome"}
-                        </TableCell>
-                        <TableCell>{formatPhone(appt.patient_phone)}</TableCell>
-                        <TableCell>{appt.doctor}</TableCell>
-                        <TableCell>{appt.appointment_type}</TableCell>
-                        <TableCell>{formatDate(appt.appointment_date)}</TableCell>
-                        <TableCell>{getStatusBadge(appt.status)}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-      </div>
-
-      {/* Messages Dialog */}
-      <Dialog open={!!selectedConversation} onOpenChange={() => setSelectedConversation(null)}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Mensagens da Conversa</DialogTitle>
-            <DialogDescription>
-              Histórico completo de mensagens trocadas
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            {messages?.map((msg: any) => (
-              <div
-                key={msg.id}
-                className={`p-4 rounded-lg ${
-                  msg.direction === "outbound"
-                    ? "bg-blue-50 ml-8"
-                    : "bg-gray-50 mr-8"
+        <div>
+          <div className="flex gap-1 border-b border-gray-200">
+            {(["handoffs", "conversations"] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-5 py-3 text-sm font-medium transition-all ${
+                  activeTab === tab
+                    ? "border-b-2 border-gray-900 text-gray-900"
+                    : "text-gray-500 hover:text-gray-700"
                 }`}
               >
-                <div className="flex justify-between items-start mb-2">
-                  <Badge variant={msg.direction === "outbound" ? "default" : "secondary"}>
-                    {msg.direction === "outbound" ? "Bot" : "Paciente"}
-                  </Badge>
-                  <span className="text-xs text-gray-500">
-                    {formatDate(msg.created_at)}
+                {tab === "handoffs" ? "🔄 Handoffs" : "💬 المحادثات"}
+                {tab === "handoffs" && metrics?.pendingHandoffs ? (
+                  <span className="mr-2 rounded-full bg-orange-500 px-1.5 py-0.5 text-xs text-white">
+                    {metrics.pendingHandoffs}
                   </span>
-                </div>
-                <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-              </div>
+                ) : null}
+              </button>
             ))}
           </div>
-        </DialogContent>
-      </Dialog>
+
+          {/* Handoffs Table */}
+          {activeTab === "handoffs" && (
+            <div className="mt-4 overflow-hidden rounded-2xl border border-gray-200 bg-white">
+              <div className="border-b px-5 py-4">
+                <h3 className="font-semibold text-gray-900">Handoffs الأخيرة</h3>
+                <p className="text-xs text-gray-400">التحويلات التي تحتاج متابعة بشرية</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="border-b bg-gray-50 text-xs text-gray-500">
+                    <tr>
+                      <th className="px-5 py-3 text-right font-medium">المريض</th>
+                      <th className="px-5 py-3 text-right font-medium">الهاتف</th>
+                      <th className="px-5 py-3 text-right font-medium">السبب</th>
+                      <th className="px-5 py-3 text-right font-medium">الملخص</th>
+                      <th className="px-5 py-3 text-right font-medium">الحالة</th>
+                      <th className="px-5 py-3 text-right font-medium">التاريخ</th>
+                      <th className="px-5 py-3 text-right font-medium">إجراء</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {handoffs?.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="py-12 text-center text-gray-400">
+                          لا توجد handoffs بعد
+                        </td>
+                      </tr>
+                    )}
+                    {handoffs?.map((row: any) => {
+                      // البنية الصحيحة: { handoff, patient, conversation }
+                      const h = row.handoff;
+                      const p = row.patient;
+                      return (
+                        <tr key={h.id} className="hover:bg-gray-50">
+                          <td className="px-5 py-3 font-medium text-gray-900">
+                            {p?.name || "—"}
+                          </td>
+                          <td className="px-5 py-3 font-mono text-gray-600 text-xs">
+                            {p?.phone || "—"}
+                          </td>
+                          <td className="px-5 py-3 text-gray-600">
+                            {h.reason || "—"}
+                          </td>
+                          <td className="max-w-xs px-5 py-3 text-gray-500">
+                            <p className="truncate text-xs">{h.summary || "—"}</p>
+                          </td>
+                          <td className="px-5 py-3">
+                            <StatusBadge status={h.status} />
+                          </td>
+                          <td className="px-5 py-3 text-xs text-gray-400">
+                            {new Date(h.created_at).toLocaleDateString("ar-SA")}
+                          </td>
+                          <td className="px-5 py-3">
+                            {h.status === "pending" && (
+                              <button
+                                onClick={() =>
+                                  updateHandoffMutation.mutate({
+                                    handoffId: h.id,
+                                    status: "completed",
+                                  })
+                                }
+                                disabled={updateHandoffMutation.isPending}
+                                className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                              >
+                                ✓ إتمام
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Conversations Table */}
+          {activeTab === "conversations" && (
+            <div className="mt-4 overflow-hidden rounded-2xl border border-gray-200 bg-white">
+              <div className="border-b px-5 py-4">
+                <h3 className="font-semibold text-gray-900">المحادثات الأخيرة</h3>
+                <p className="text-xs text-gray-400">سجل محادثات المرضى مع البوت</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="border-b bg-gray-50 text-xs text-gray-500">
+                    <tr>
+                      <th className="px-5 py-3 text-right font-medium">المريض</th>
+                      <th className="px-5 py-3 text-right font-medium">الهاتف</th>
+                      <th className="px-5 py-3 text-right font-medium">الحالة</th>
+                      <th className="px-5 py-3 text-right font-medium">الخطوة</th>
+                      <th className="px-5 py-3 text-right font-medium">البداية</th>
+                      <th className="px-5 py-3 text-right font-medium">رسائل</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {conversations?.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="py-12 text-center text-gray-400">
+                          لا توجد محادثات بعد
+                        </td>
+                      </tr>
+                    )}
+                    {conversations?.map((row: any) => {
+                      // البنية الصحيحة: { conversation, patient }
+                      const c = row.conversation;
+                      const p = row.patient;
+                      return (
+                        <tr key={c.id} className="hover:bg-gray-50">
+                          <td className="px-5 py-3 font-medium text-gray-900">
+                            {p?.name || "—"}
+                          </td>
+                          <td className="px-5 py-3 font-mono text-gray-600 text-xs">
+                            {p?.phone || "—"}
+                          </td>
+                          <td className="px-5 py-3">
+                            <StatusBadge status={c.status} />
+                          </td>
+                          <td className="px-5 py-3 text-xs text-gray-500">
+                            {c.current_step || "—"}
+                          </td>
+                          <td className="px-5 py-3 text-xs text-gray-400">
+                            {new Date(c.started_at).toLocaleDateString("ar-SA")}
+                          </td>
+                          <td className="px-5 py-3">
+                            <button
+                              onClick={() => setSelectedConvId(c.id)}
+                              className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100"
+                            >
+                              عرض
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      </main>
+
+      {/* Conversation Dialog */}
+      {selectedConvId && (
+        <ConversationDialog
+          conversationId={selectedConvId}
+          onClose={() => setSelectedConvId(null)}
+        />
+      )}
     </div>
   );
 }
