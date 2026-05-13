@@ -44,7 +44,6 @@ async function startServer() {
       const { handleIncomingMessage } = await import("../services/bot.engine");
 
       const payload = req.body;
-      console.log("[Webhook RAW]", JSON.stringify(payload, null, 2));
       const extracted = extractMessageFromWebhook(payload);
 
       if (!extracted) return; // رسالة مُرسَلة منّا أو غير صالحة

@@ -22,7 +22,7 @@
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "../_core/cookies";
 import { systemRouter } from "../_core/systemRouter";
-import { publicProcedure, router } from "../_core/trpc";
+import { adminProcedure, publicProcedure, router } from "../_core/trpc";
 import { handleIncomingMessage } from "../services/bot.engine";
 import { z } from "zod";
 import {
@@ -100,12 +100,12 @@ export const appRouter = router({
     // ── Workspace Management ──────────────────────────────────────────────────
 
     /** جلب كل العملاء مع إعداداتهم */
-    workspaces: publicProcedure.query(async () => {
+    workspaces: adminProcedure.query(async () => {
       return await getAllWorkspaces();
     }),
 
     /** إنشاء عميل جديد */
-    createWorkspace: publicProcedure
+    createWorkspace: adminProcedure
       .input(
         z.object({
           name: z.string().min(2, "اسم قصير جداً"),
@@ -128,7 +128,7 @@ export const appRouter = router({
       }),
 
     /** تعديل حالة العميل (تفعيل/تعطيل) */
-    updateWorkspace: publicProcedure
+    updateWorkspace: adminProcedure
       .input(
         z.object({
           workspaceId: z.string().uuid(),
@@ -144,7 +144,7 @@ export const appRouter = router({
     // ── Z-API Config ──────────────────────────────────────────────────────────
 
     /** ربط رقم واتساب (Z-API instance) بعميل */
-    saveZapiConfig: publicProcedure
+    saveZapiConfig: adminProcedure
       .input(
         z.object({
           workspaceId: z.string().uuid(),
@@ -162,7 +162,7 @@ export const appRouter = router({
     // ── Bot Settings ──────────────────────────────────────────────────────────
 
     /** تعديل شخصية البوت والـ system prompt لعميل محدد */
-    saveBotSettings: publicProcedure
+    saveBotSettings: adminProcedure
       .input(
         z.object({
           workspaceId: z.string().uuid(),
@@ -182,35 +182,35 @@ export const appRouter = router({
     // ── Per-workspace Dashboard ───────────────────────────────────────────────
 
     /** إحصائيات dashboard لعميل محدد */
-    workspaceMetrics: publicProcedure
+    workspaceMetrics: adminProcedure
       .input(z.object({ workspaceId: z.string().uuid() }))
       .query(async ({ input }) => {
         return await getWorkspaceDashboardMetrics(input.workspaceId);
       }),
 
     /** المحادثات الخاصة بعميل محدد */
-    workspaceConversations: publicProcedure
+    workspaceConversations: adminProcedure
       .input(z.object({ workspaceId: z.string().uuid() }))
       .query(async ({ input }) => {
         return await getWorkspaceConversations(input.workspaceId);
       }),
 
     /** رسائل محادثة بعينها */
-    conversationMessages: publicProcedure
+    conversationMessages: adminProcedure
       .input(z.object({ conversationId: z.string().uuid() }))
       .query(async ({ input }) => {
         return await getConversationMessages(input.conversationId);
       }),
 
     /** قائمة الـ handoffs لعميل محدد */
-    workspaceHandoffs: publicProcedure
+    workspaceHandoffs: adminProcedure
       .input(z.object({ workspaceId: z.string().uuid() }))
       .query(async ({ input }) => {
         return await getWorkspaceHandoffs(input.workspaceId);
       }),
 
     /** تحديث حالة handoff */
-    updateHandoff: publicProcedure
+    updateHandoff: adminProcedure
       .input(
         z.object({
           handoffId: z.string().uuid(),
@@ -224,7 +224,7 @@ export const appRouter = router({
     // ── Simulator (workspace-aware) ───────────────────────────────────────────
 
     /** محاكي المحادثة — يعمل مع workspace محدد */
-    simulateMessage: publicProcedure
+    simulateMessage: adminProcedure
       .input(
         z.object({
           workspaceId: z.string().uuid(),
@@ -252,7 +252,7 @@ export const appRouter = router({
       }),
 
     /** رسائل المحاكي لعرضها في الواجهة */
-    getSimulatorMessages: publicProcedure
+    getSimulatorMessages: adminProcedure
       .input(
         z.object({
           workspaceId: z.string().uuid(),
