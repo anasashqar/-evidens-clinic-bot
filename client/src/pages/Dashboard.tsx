@@ -306,7 +306,7 @@ export default function Dashboard() {
       </div>
 
       {/* Metrics */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5 xl:grid-cols-5">
         <MetricCard
           label="إجمالي المحادثات"
           value={metrics?.totalConversations}
@@ -314,16 +314,24 @@ export default function Dashboard() {
           loading={metricsLoading}
         />
         <MetricCard
-          label="محادثات نشطة"
-          value={metrics?.activeConversations}
+          label="محادثات اليوم"
+          value={metrics?.todayConversations}
           icon={Activity}
           loading={metricsLoading}
+          description="المحادثات التي بدأت اليوم"
         />
         <MetricCard
           label="Handoffs بانتظار"
           value={metrics?.pendingHandoffs}
           icon={Clock}
           loading={metricsLoading}
+        />
+        <MetricCard
+          label="Handoffs اليوم"
+          value={metrics?.todayHandoffs}
+          icon={CheckCircle2}
+          loading={metricsLoading}
+          description="طلبات التحويل اليوم"
         />
         <MetricCard
           label="إجمالي المرضى"

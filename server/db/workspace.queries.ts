@@ -8,7 +8,7 @@
  */
 
 import { db } from "./index";           // Drizzle instance
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, ne, desc, count, gte, lte } from "drizzle-orm";
 import {
   workspaces,
   workspaceZapiConfig,
@@ -424,22 +424,174 @@ export async function upsertBotSettings(
 // DASHBOARD METRICS (workspace-scoped)
 // ═════════════════════════════════════════════════════════════════════════════
 
+// ─── 1. Patient Closed Conversations ─────────────────────────────────────────
+// تُستخدم في bot.engine.ts لبناء ملخص الزيارات السابقة للمرضى العائدين
+
+/**
+ * يجلب المحادثات المنتهية (status = "closed" أو "handoff") لمريض معين
+ * في نفس الـ workspace — مع استثناء المحادثة الحالية
+ *
+ * @param workspaceId  - الـ workspace الحالي
+ * @param patientId    - المريض
+ * @param excludeId    - المحادثة الحالية (لا نريد إدراجها في التاريخ)
+ * @param limit        - أقصى عدد محادثات نريدها (default 5)
+ */
+export async function getPatientClosedConversations(
+  workspaceId: string,
+  patientId: string,
+  excludeId: string,
+  limit = 5
+) {
+  return await db
+    .select()
+    .from(conversations)
+    .where(
+      and(
+        eq(conversations.workspace_id, workspaceId),
+        eq(conversations.patient_id, patientId),
+        ne(conversations.id, excludeId),        // ← استثنِ المحادثة الحالية
+        ne(conversations.status, "active")       // ← فقط المنتهية
+      )
+    )
+    .orderBy(desc(conversations.ended_at))
+    .limit(limit);
+}
+
+// ─── 2. Dashboard Metrics (محسّن) ────────────────────────────────────────────
+// النسخة القديمة كانت تجلب كل الصفوف ثم تحسب في JavaScript
+// هذه النسخة تستخدم count() مباشرة في DB → أسرع بكثير مع البيانات الكبيرة
+
+/**
+ * إحصائيات لوحة التحكم لـ workspace معين
+ * تستخدم COUNT في DB بدل جلب كل الصفوف
+ */
 export async function getWorkspaceDashboardMetrics(workspaceId: string) {
-  const [convs, allHandoffs, allPatients] = await Promise.all([
-    db.select().from(conversations).where(eq(conversations.workspace_id, workspaceId)),
-    db.select().from(handoffs).where(eq(handoffs.workspace_id, workspaceId)),
-    db.select().from(patients).where(eq(patients.workspace_id, workspaceId)),
+  const now = new Date();
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
+
+  const nextWeek = new Date(now);
+  nextWeek.setDate(now.getDate() + 7);
+
+  const [
+    totalConvs,
+    activeConvs,
+    handoffConvs,
+    totalHandoffsCount,
+    pendingHandoffsCount,
+    completedHandoffsCount,
+    totalPatientsCount,
+    returningPatientsCount,
+    todayConvsCount,
+    todayHandoffsCount,
+  ] = await Promise.all([
+    // محادثات: الكل
+    db
+      .select({ value: count() })
+      .from(conversations)
+      .where(eq(conversations.workspace_id, workspaceId)),
+
+    // محادثات: نشطة
+    db
+      .select({ value: count() })
+      .from(conversations)
+      .where(
+        and(
+          eq(conversations.workspace_id, workspaceId),
+          eq(conversations.status, "active")
+        )
+      ),
+
+    // محادثات: في handoff
+    db
+      .select({ value: count() })
+      .from(conversations)
+      .where(
+        and(
+          eq(conversations.workspace_id, workspaceId),
+          eq(conversations.status, "handoff")
+        )
+      ),
+
+    // handoffs: الكل
+    db
+      .select({ value: count() })
+      .from(handoffs)
+      .where(eq(handoffs.workspace_id, workspaceId)),
+
+    // handoffs: pending
+    db
+      .select({ value: count() })
+      .from(handoffs)
+      .where(
+        and(
+          eq(handoffs.workspace_id, workspaceId),
+          eq(handoffs.status, "pending")
+        )
+      ),
+
+    // handoffs: completed
+    db
+      .select({ value: count() })
+      .from(handoffs)
+      .where(
+        and(
+          eq(handoffs.workspace_id, workspaceId),
+          eq(handoffs.status, "completed")
+        )
+      ),
+
+    // patients: الكل
+    db
+      .select({ value: count() })
+      .from(patients)
+      .where(eq(patients.workspace_id, workspaceId)),
+
+    // patients: عائدون
+    db
+      .select({ value: count() })
+      .from(patients)
+      .where(
+        and(
+          eq(patients.workspace_id, workspaceId),
+          eq(patients.is_returning_patient, true)
+        )
+      ),
+
+    // محادثات اليوم
+    db
+      .select({ value: count() })
+      .from(conversations)
+      .where(
+        and(
+          eq(conversations.workspace_id, workspaceId),
+          gte(conversations.started_at, todayStart)
+        )
+      ),
+
+    // handoffs اليوم
+    db
+      .select({ value: count() })
+      .from(handoffs)
+      .where(
+        and(
+          eq(handoffs.workspace_id, workspaceId),
+          gte(handoffs.created_at, todayStart)
+        )
+      ),
   ]);
 
   return {
-    totalConversations: convs.length,
-    activeConversations: convs.filter((c) => c.status === "active").length,
-    handoffConversations: convs.filter((c) => c.status === "handoff").length,
-    totalHandoffs: allHandoffs.length,
-    pendingHandoffs: allHandoffs.filter((h) => h.status === "pending").length,
-    completedHandoffs: allHandoffs.filter((h) => h.status === "completed").length,
-    totalPatients: allPatients.length,
-    returningPatients: allPatients.filter((p) => p.is_returning_patient).length,
+    totalConversations:     totalConvs[0]?.value         ?? 0,
+    activeConversations:    activeConvs[0]?.value         ?? 0,
+    handoffConversations:   handoffConvs[0]?.value        ?? 0,
+    totalHandoffs:          totalHandoffsCount[0]?.value  ?? 0,
+    pendingHandoffs:        pendingHandoffsCount[0]?.value ?? 0,
+    completedHandoffs:      completedHandoffsCount[0]?.value ?? 0,
+    totalPatients:          totalPatientsCount[0]?.value  ?? 0,
+    returningPatients:      returningPatientsCount[0]?.value ?? 0,
+    todayConversations:     todayConvsCount[0]?.value     ?? 0,
+    todayHandoffs:          todayHandoffsCount[0]?.value  ?? 0,
   };
 }
 
