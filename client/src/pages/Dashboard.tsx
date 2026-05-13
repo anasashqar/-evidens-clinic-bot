@@ -62,6 +62,16 @@ const STATUS_CONFIG: Record<
   completed:   { label: "مكتملة",   variant: "secondary" },
 };
 
+const STEP_LABELS: Record<string, string> = {
+  greeting:           "ترحيب",
+  collecting_name:    "جمع الاسم",
+  collecting_concern: "سبب الزيارة",
+  collecting_time:    "الوقت المفضل",
+  confirming:         "تأكيد",
+  handoff:            "تحويل",
+  initial:            "بداية",
+};
+
 function StatusBadge({ status }: { status: string }) {
   const s = STATUS_CONFIG[status] ?? { label: status, variant: "secondary" as const };
   return <Badge variant={s.variant}>{s.label}</Badge>;
@@ -511,7 +521,7 @@ export default function Dashboard() {
                             <StatusBadge status={c.status} />
                           </TableCell>
                           <TableCell className="hidden sm:table-cell text-xs text-muted-foreground">
-                            {c.current_step || "—"}
+                            {STEP_LABELS[c.current_step] ?? c.current_step ?? "—"}
                           </TableCell>
                           <TableCell className="hidden md:table-cell text-xs text-muted-foreground">
                             {new Date(c.started_at).toLocaleDateString("ar-SA")}
