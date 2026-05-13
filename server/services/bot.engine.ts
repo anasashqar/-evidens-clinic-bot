@@ -38,6 +38,7 @@ import {
   updateConversation,
   updatePatient,
   createHandoff,
+  getLatestHandoffForConversation,
   type WorkspaceConfig,
 } from "../db/workspace.queries";
 
@@ -105,10 +106,24 @@ export async function handleIncomingMessage(
       metadata: {},
     });
 
-    // إذا كانت المحادثة في وضع handoff، تجاهل الرسائل الجديدة
+    // إذا كانت المحادثة في وضع handoff، تحقق من حالتها
     if (conversation.status === "handoff") {
-      console.log(`${tag} Conversation in handoff mode — ignoring`);
-      return;
+      const latestHandoff = await getLatestHandoffForConversation(conversation.id);
+
+      if (latestHandoff?.status === "completed") {
+        // المنسق أنهى الـ handoff → ابدأ محادثة جديدة
+        const newConversation = await createWorkspaceConversation(workspace.id, patient.id);
+        if (!newConversation) {
+          console.error(`${tag} Failed to create new conversation after handoff`);
+          return;
+        }
+        conversation = newConversation;
+        console.log(`${tag} ↺ Handoff completed — new conversation started for ${phone}`);
+      } else {
+        // الـ handoff لا يزال pending أو in_progress → تجاهل
+        console.log(`${tag} Conversation in handoff mode — ignoring`);
+        return;
+      }
     }
 
     // ─── Phase 3: AI Processing ───────────────────────────────────────────────

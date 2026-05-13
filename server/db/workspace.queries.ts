@@ -454,3 +454,14 @@ export async function getWorkspaceConversations(workspaceId: string) {
     .where(eq(conversations.workspace_id, workspaceId))
     .orderBy(desc(conversations.updated_at));
 }
+
+/** آخر handoff لمحادثة معينة — لمعرفة هل أُنجز أم لا */
+export async function getLatestHandoffForConversation(conversationId: string) {
+  const rows = await db
+    .select()
+    .from(handoffs)
+    .where(eq(handoffs.conversation_id, conversationId))
+    .orderBy(desc(handoffs.created_at))
+    .limit(1);
+  return rows[0] ?? null;
+}
