@@ -208,6 +208,8 @@ async function processWithAI(context: BotContext, userMessage: string): Promise<
       botSettings
     );
 
+    console.log(`[DEBUG] shouldHandoff=${shouldHandoff} | msgCount=${conversationHistory.length}`);
+
     if (shouldHandoff) {
       await performHandoff(context, botResponse);
       return;
@@ -281,7 +283,7 @@ async function extractAndUpdateContext(
   let patientUpdates: Partial<Pick<Patient, "name" | "is_returning_patient">> = {};
 
   // استخراج الاسم
-  const nameMatch = userMessage.match(/(?:اسمي|أنا|اسم)\s+([ء-يa-zA-Z\s]+)/i);
+  const nameMatch = userMessage.match(/(?:اسمي|أنا)\s+([\u0600-\u06FF]{2,15}(?:\s+[\u0600-\u06FF]{2,15})?)/);
   if (nameMatch && !currentCtx.name) {
     currentCtx.name = nameMatch[1].trim();
     patientUpdates.name = currentCtx.name as string;

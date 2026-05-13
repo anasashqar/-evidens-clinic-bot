@@ -8,7 +8,7 @@
  * ═══════════════════════════════════════════════════════════════════
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { trpc } from "../lib/trpc";
 import { useLocation } from "wouter";
 
@@ -130,6 +130,8 @@ export default function Dashboard() {
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"handoffs" | "conversations">("handoffs");
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
+  const [notification, setNotification] = useState<string | null>(null);
+  const prevPendingCount = useRef<number>(0);
 
   // ── Data fetching ──────────────────────────────────────────────────────────
 
@@ -162,6 +164,36 @@ export default function Dashboard() {
     onSuccess: () => refetchHandoffs(),
   });
 
+  // ── Realtime notification عند وصول handoff جديد ──────────────────────────
+  useEffect(() => {
+    const pending = handoffs?.filter((r: any) => r.handoff.status === "pending").length ?? 0;
+
+    if (pending > prevPendingCount.current && prevPendingCount.current !== -1) {
+      const newest = handoffs?.find((r: any) => r.handoff.status === "pending");
+      const name = newest?.patient?.name || newest?.patient?.phone || "مريض";
+      setNotification(`🔔 طلب جديد من ${name} — يحتاج متابعة`);
+
+      // صوت تنبيه
+      try {
+        const ctx = new AudioContext();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.value = 520;
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.4);
+      } catch {}
+
+      // إخفاء بعد 6 ثوانٍ
+      setTimeout(() => setNotification(null), 6000);
+    }
+
+    prevPendingCount.current = pending;
+  }, [handoffs]);
+
   // ── Current workspace info ─────────────────────────────────────────────────
 
   const currentWs = workspaces?.find((w: any) => w.workspace.id === workspaceId);
@@ -171,6 +203,20 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50" dir="rtl">
+
+      {/* 🔔 Notification Banner */}
+      {notification && (
+        <div className="fixed top-4 left-1/2 z-50 -translate-x-1/2 animate-bounce">
+          <div className="flex items-center gap-3 rounded-2xl bg-orange-500 px-5 py-3 text-white shadow-xl">
+            <span className="text-lg">🔔</span>
+            <span className="text-sm font-semibold">{notification}</span>
+            <button
+              onClick={() => setNotification(null)}
+              className="mr-2 text-white/70 hover:text-white"
+            >✕</button>
+          </div>
+        </div>
+      )}
       {/* Top bar */}
       <header className="border-b bg-white px-6 py-4">
         <div className="mx-auto flex max-w-7xl items-center justify-between">
