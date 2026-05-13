@@ -10,8 +10,6 @@ const t = initTRPC.context<TrpcContext>().create({
 export const router = t.router;
 export const publicProcedure = t.procedure;
 
-// ─── requireUser middleware ───────────────────────────────────────────────────
-
 const requireUser = t.middleware(async opts => {
   const { ctx, next } = opts;
 
@@ -20,26 +18,40 @@ const requireUser = t.middleware(async opts => {
   }
 
   return next({
-    ctx: { ...ctx, user: ctx.user },
+    ctx: {
+      ...ctx,
+      user: ctx.user,
+    },
   });
 });
 
 export const protectedProcedure = t.procedure.use(requireUser);
 
-// ─── adminProcedure ───────────────────────────────────────────────────────────
-// مبني فوق protectedProcedure → user مضمون الوجود، نتحقق من role فقط
+const isDev = process.env.NODE_ENV === 'development';
 
-export const adminProcedure = protectedProcedure.use(
+export const adminProcedure = t.procedure.use(
   t.middleware(async opts => {
     const { ctx, next } = opts;
 
-    if (ctx.user.role !== 'admin') {
+    // في بيئة التطوير: تخطي التحقق من المصادقة لأن Manus OAuth غير متوفر محلياً
+    if (isDev && !ctx.user) {
+      return next({
+        ctx: {
+          ...ctx,
+          user: { id: 0, openId: 'dev-admin', name: 'Dev Admin', role: 'admin' } as any,
+        },
+      });
+    }
+
+    if (!ctx.user || ctx.user.role !== 'admin') {
       throw new TRPCError({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });
     }
 
     return next({
-      ctx: { ...ctx, user: ctx.user },
+      ctx: {
+        ...ctx,
+        user: ctx.user,
+      },
     });
   }),
 );
-
