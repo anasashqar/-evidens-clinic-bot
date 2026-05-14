@@ -78,6 +78,13 @@ interface LLMStructuredOutput {
   /** سبب التحويل — يُحفظ في handoff.reason */
   handoff_reason: string | null;
   /**
+   * الصمت الذكي — لا يُرسل أي رد للمستخدم
+   * يُستخدم عندما الرد سيضر أو لا فائدة منه
+   */
+  should_be_silent: boolean;
+  /** سبب الصمت — للـ logging فقط، لا يُرسل للمستخدم */
+  silent_reason: string | null;
+  /**
    * الخطوة الحالية — تُخزن في conversations.current_step
    * القيم المسموح بها:
    *   greeting         → أول تواصل، ترحيب
@@ -111,6 +118,8 @@ const JSON_FORMAT_INSTRUCTION = `
   },
   "should_handoff": false,
   "handoff_reason": null,
+  "should_be_silent": false,
+  "silent_reason": null,
   "current_step": "greeting|collecting_name|collecting_concern|collecting_time|confirming|handoff"
 }
 
@@ -119,6 +128,13 @@ const JSON_FORMAT_INSTRUCTION = `
 - is_returning: true فقط إذا ذكر صراحة أنه زار من قبل
 - should_handoff: true عندما تكتمل المعلومات الأساسية وأنت جاهز للتحويل
 - إذا المعلومة غير موجودة في الرسالة: null
+
+قواعد الصمت الذكي (should_be_silent):
+- true عندما الرسالة مجرد إيصال بحت ("تمام"، "👍"، "ع راسي"، "شكراً") بعد تقديم معلومات كاملة
+- true عندما يطلب المستخدم صراحةً التوقف ("لا شكراً"، "مو مهتم"، "بتصل أنا")
+- true عندما الرسالة عشوائية لا تتعلق بالموضوع ولا تستحق رداً
+- false في كل الحالات الأخرى — الشك يعني الرد دائماً
+- عند should_be_silent: true يمكن ترك message فارغاً
 `.trim();
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -181,6 +197,13 @@ export async function handleIncomingMessage(
         console.log(`${tag} Conversation in handoff — ignoring message from ${phone}`);
         return;
       }
+    }
+
+    // ─── Pre-filter: تجاهل الرسائل غير القابلة للرد قبل استدعاء LLM ───────────
+    const preFilter = shouldIgnoreBeforeLLM(message);
+    if (preFilter.ignore) {
+      console.log(`${tag} 🚫 Pre-filter ignore [${preFilter.reason}] from ${phone}`);
+      return;
     }
 
     // ─── Phase 3: AI Processing ───────────────────────────────────────────────
@@ -290,9 +313,9 @@ async function processWithAI(context: BotContext, userMessage: string): Promise<
       return;
     }
 
-    const { message: botResponse, extracted, should_handoff, handoff_reason, current_step } = structured;
+    const { message: botResponse, extracted, should_handoff, handoff_reason, should_be_silent, silent_reason, current_step } = structured;
 
-    if (!botResponse) {
+    if (!botResponse && !should_be_silent) {
       console.error(`${tag} Empty message in structured output`);
       return;
     }
@@ -334,6 +357,12 @@ async function processWithAI(context: BotContext, userMessage: string): Promise<
     // تحديث الـ conversation reference في الذاكرة للـ performHandoff
     context.conversation = { ...context.conversation, context: currentCtx, current_step: nextStep };
 
+    // ─── الصمت الذكي — لا يُرسل رد ───────────────────────────────────────────
+    if (should_be_silent) {
+      console.log(`${tag} 🤫 Smart silence [${silent_reason ?? "llm_decision"}] — no response sent to ${context.patient.phone}`);
+      return;
+    }
+
     // ─── تنفيذ القرار ────────────────────────────────────────────────────────
     if (shouldHandoff) {
       await performHandoff(context, botResponse, handoff_reason ?? "qualification_complete");
@@ -348,6 +377,26 @@ async function processWithAI(context: BotContext, userMessage: string): Promise<
 // ═════════════════════════════════════════════════════════════════════════════
 // HELPERS
 // ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * فلتر مسبق — قبل استدعاء LLM
+ * يتجاهل الرسائل التي من المؤكد أنها لا تحتاج رداً (ملصقات، فارغة...)
+ * يوفّر tokens الـ LLM ويُسرّع المعالجة
+ */
+function shouldIgnoreBeforeLLM(message: string): { ignore: boolean; reason: string } {
+  const trimmed = message.trim();
+
+  // رسالة فارغة تماماً
+  if (!trimmed) return { ignore: true, reason: "empty_message" };
+
+  // أنواع وسائط لا تحتوي محتوى نصياً قابلاً للرد
+  const SILENT_TYPES = ["[sticker]", "[reaction]", "[poll]", "[contact]"];
+  if (SILENT_TYPES.includes(trimmed.toLowerCase())) {
+    return { ignore: true, reason: `non_actionable_type: ${trimmed}` };
+  }
+
+  return { ignore: false, reason: "" };
+}
 
 /**
  * يبني نص runtime context يُضاف كـ system message
@@ -435,6 +484,8 @@ function parseStructuredOutput(raw: string, tag: string): LLMStructuredOutput | 
     parsed.extracted = parsed.extracted ?? { name: null, concern: null, preferred_period: null, is_returning: null };
     parsed.should_handoff = parsed.should_handoff ?? false;
     parsed.handoff_reason = parsed.handoff_reason ?? null;
+    parsed.should_be_silent = parsed.should_be_silent ?? false;
+    parsed.silent_reason = parsed.silent_reason ?? null;
     parsed.current_step = parsed.current_step ?? "collecting_name";
 
     return parsed;
