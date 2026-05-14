@@ -82,8 +82,23 @@ interface LLMStructuredOutput {
    * يُستخدم عندما الرد سيضر أو لا فائدة منه
    */
   should_be_silent: boolean;
-  /** سبب الصمت — للـ logging فقط، لا يُرسل للمستخدم */
-  silent_reason: string | null;
+  /**
+   * سبب الصمت — مهم للـ analytics والـ debugging
+   *   acknowledgement_terminal → إيصال بعد اكتمال المحادثة وبدون سؤال معلّق
+   *   opt_out                  → رفض صريح للتواصل
+   *   irrelevant               → رسالة خارج الموضوع نهائياً
+   *   duplicate                → تكرار حرفي لرسالة سابقة
+   *   reaction                 → إيموجي وحيد بدون قصد
+   */
+  silent_reason:
+    | "acknowledgement_terminal"
+    | "opt_out"
+    | "irrelevant"
+    | "duplicate"
+    | "reaction"
+    | null;
+  /** درجة الثقة بقرار الصمت (0.0–1.0) — ما دون 0.80 = رد تلقائي */
+  silence_confidence: number;
   /**
    * الخطوة الحالية — تُخزن في conversations.current_step
    * القيم المسموح بها:
@@ -120,6 +135,7 @@ const JSON_FORMAT_INSTRUCTION = `
   "handoff_reason": null,
   "should_be_silent": false,
   "silent_reason": null,
+  "silence_confidence": 0.0,
   "current_step": "greeting|collecting_name|collecting_concern|collecting_time|confirming|handoff"
 }
 
@@ -127,14 +143,26 @@ const JSON_FORMAT_INSTRUCTION = `
 - name: الاسم الشخصي فقط، لا جمل ولا أوصاف
 - is_returning: true فقط إذا ذكر صراحة أنه زار من قبل
 - should_handoff: true عندما تكتمل المعلومات الأساسية وأنت جاهز للتحويل
+- should_handoff: true أيضاً عند غضب أو شكوى أو حالة حساسة أو طلب غير واضح لكنه مهم — البشر أولاً
 - إذا المعلومة غير موجودة في الرسالة: null
 
-قواعد الصمت الذكي (should_be_silent):
-- true عندما الرسالة مجرد إيصال بحت ("تمام"، "👍"، "ع راسي"، "شكراً") بعد تقديم معلومات كاملة
-- true عندما يطلب المستخدم صراحةً التوقف ("لا شكراً"، "مو مهتم"، "بتصل أنا")
-- true عندما الرسالة عشوائية لا تتعلق بالموضوع ولا تستحق رداً
-- false في كل الحالات الأخرى — الشك يعني الرد دائماً
-- عند should_be_silent: true يمكن ترك message فارغاً
+قواعد الصمت الذكي (should_be_silent) — اقرأ بدقة:
+❌ لا يجوز الصمت أبداً إذا:
+  - آخر رسالة من البوت كانت سؤالاً ("هل تريد...؟"، "ما اسمك؟" ...) — أي رد يستحق رداً
+  - المستخدم في منتصف تقديم معلوماته (current_step ليس confirming أو handoff)
+  - هناك أي غموض في النية
+
+✅ يجوز الصمت فقط في هذه الحالات الدقيقة (مع تحديد silent_reason):
+  - "acknowledgement_terminal": إيصال بحت ("تمام"، "👍"، "شكراً") بعد اكتمال كل المعلومات وتأكيدها — ولم تنتهِ آخر رسالة للبوت بسؤال
+  - "opt_out": رفض صريح ("لا شكراً"، "مو مهتم"، "ما رح آجي")  
+  - "irrelevant": رسالة لا علاقة لها بالخدمة نهائياً (أخبار، سياسة، عشوائي)
+  - "duplicate": نفس الرسالة الحرفية أُرسلت مسبقاً في هذه المحادثة
+  - "reaction": إيموجي وحيد بدون أي نص أو قصد
+
+silence_confidence: درجة ثقتك (0.0–1.0) بقرار الصمت
+  - أقل من 0.80 → اجعل should_be_silent: false والرد أضمن
+  - الشك يعني الرد دائماً
+  - عند should_be_silent: true يمكن ترك message فارغاً
 `.trim();
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -269,12 +297,21 @@ async function processWithAI(context: BotContext, userMessage: string): Promise<
     // الرسالة الحالية — مرة واحدة فقط
     conversationHistory.push({ role: "user", content: userMessage });
 
+    // قاعدة ثابتة: هل آخر رسالة البوت كانت سؤالاً؟ → يمنع الصمت مهما قرر الـ LLM
+    const lastOutbound = dbHistory.filter((m) => m.direction === "outbound").at(-1);
+    const lastBotMessageWasQuestion = lastOutbound
+      ? /[?؟]/.test(lastOutbound.content.trimEnd().slice(-30))
+      : false;
+
     // ─── Context الحالي + عداد الرسائل ───────────────────────────────────────
     const currentCtx = {
       ...((context.conversation.context as Record<string, unknown>) ?? {}),
     };
     const messageCount = ((currentCtx.message_count as number) ?? 0) + 1;
     currentCtx.message_count = messageCount;
+
+    // كشف مسبق: هل آخر إجراء للبوت كان صمتاً؟ (لكسر silent loops)
+    const wasLastActionSilent = currentCtx.last_action === "silent";
 
     // ─── سياق المحادثات السابقة (للمرضى العائدين) ────────────────────────────
     const patientHistory = await buildPatientHistorySummary(context);
@@ -347,6 +384,31 @@ async function processWithAI(context: BotContext, userMessage: string): Promise<
       console.log(`${tag} Hit message limit (${messageCount}/${botSettings.max_messages_before_handoff}) — forcing handoff`);
     }
 
+    // ─── قرار الصمت النهائي (مع الضمانات) ───────────────────────────────────
+    const silenceConfidence = structured.silence_confidence ?? 0;
+    const resolvedShouldSilence =
+      should_be_silent &&
+      !shouldHandoff &&                 // لا صمت إذا كان handoff مقرراً
+      !wasLastActionSilent &&           // كسر silent loops
+      !lastBotMessageWasQuestion &&     // قاعدة ثابتة: سؤال معلّق = لا صمت أبداً
+      silenceConfidence >= 0.80;        // ثقة كافية فقط
+
+    if (resolvedShouldSilence) {
+      // إشارات داخلية للـ analytics — opted_out / closed_politely / last_action / terminal_state
+      if (silent_reason === "opt_out") {
+        currentCtx.opted_out = true;
+        currentCtx.terminal_state = "opted_out";
+      } else if (silent_reason === "acknowledgement_terminal") {
+        currentCtx.closed_politely = true;
+        currentCtx.terminal_state = "closed_politely";
+      }
+      currentCtx.last_action = "silent";
+    } else if (shouldHandoff) {
+      currentCtx.last_action = "handoff";
+    } else {
+      currentCtx.last_action = "replied";
+    }
+
     // ─── تحديث DB بالـ context الجديد والخطوة الحالية ────────────────────────
     const nextStep = shouldHandoff ? "handoff" : current_step;
     await updateConversation(context.conversation.id, {
@@ -358,9 +420,14 @@ async function processWithAI(context: BotContext, userMessage: string): Promise<
     context.conversation = { ...context.conversation, context: currentCtx, current_step: nextStep };
 
     // ─── الصمت الذكي — لا يُرسل رد ───────────────────────────────────────────
-    if (should_be_silent) {
-      console.log(`${tag} 🤫 Smart silence [${silent_reason ?? "llm_decision"}] — no response sent to ${context.patient.phone}`);
+    if (resolvedShouldSilence) {
+      const reason = wasLastActionSilent ? "loop_broken" : (silent_reason ?? "llm_decision");
+      console.log(`${tag} 🤫 Smart silence [${reason}] conf=${silenceConfidence} — no response to ${context.patient.phone}`);
       return;
+    }
+
+    if (wasLastActionSilent) {
+      console.log(`${tag} 🔄 Silent loop detected — resuming conversation for ${context.patient.phone}`);
     }
 
     // ─── تنفيذ القرار ────────────────────────────────────────────────────────
@@ -486,6 +553,7 @@ function parseStructuredOutput(raw: string, tag: string): LLMStructuredOutput | 
     parsed.handoff_reason = parsed.handoff_reason ?? null;
     parsed.should_be_silent = parsed.should_be_silent ?? false;
     parsed.silent_reason = parsed.silent_reason ?? null;
+    parsed.silence_confidence = parsed.silence_confidence ?? 0;
     parsed.current_step = parsed.current_step ?? "collecting_name";
 
     return parsed;
