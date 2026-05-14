@@ -31,34 +31,10 @@ import {
   ArrowRight,
   Loader2,
 } from "lucide-react";
-
-// ─── Toast ─────────────────────────────────────────────────────────────────────
-
-function useToast() {
-  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
-
-  const show = (msg: string, type: "success" | "error") => {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 3500);
-  };
-
-  const ToastEl = toast ? (
-    <div
-      className={`fixed bottom-6 right-1/2 translate-x-1/2 z-50 flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-medium text-white shadow-2xl animate-in slide-in-from-bottom-2 ${
-        toast.type === "success" ? "bg-green-600" : "bg-destructive"
-      }`}
-    >
-      {toast.type === "success" ? (
-        <CheckCircle2 className="h-4 w-4 shrink-0" />
-      ) : (
-        <AlertCircle className="h-4 w-4 shrink-0" />
-      )}
-      {toast.msg}
-    </div>
-  ) : null;
-
-  return { show, ToastEl };
-}
+import { toast } from "sonner";
+import { motion, AnimatePresence } from "framer-motion";
+import { PageTransition } from "../components/PageTransition";
+import { PageSkeleton } from "../components/PageSkeleton";
 
 // ─── Field Component ───────────────────────────────────────────────────────────
 
@@ -117,18 +93,32 @@ function ZApiTab({
   workspaceId: string;
   initial?: { instance_id: string; token: string; client_token: string; base_url?: string };
 }) {
+  const utils = trpc.useUtils();
   const [form, setForm] = useState({
     instance_id: initial?.instance_id ?? "",
     token: initial?.token ?? "",
     client_token: initial?.client_token ?? "",
     base_url: initial?.base_url ?? "https://api.z-api.io",
   });
-  const { show, ToastEl } = useToast();
 
   const saveMutation = trpc.admin.saveZapiConfig.useMutation({
-    onSuccess: () => show("تم حفظ إعدادات Z-API بنجاح", "success"),
-    onError: (e: { message: string }) => show(e.message, "error"),
+    onSuccess: () => {
+      toast.success("تم حفظ إعدادات Z-API بنجاح");
+      utils.admin.workspaces.invalidate();
+    },
+    onError: (e: { message: string }) => toast.error(e.message),
   });
+
+  useEffect(() => {
+    if (initial) {
+      setForm({
+        instance_id: initial.instance_id ?? "",
+        token: initial.token ?? "",
+        client_token: initial.client_token ?? "",
+        base_url: initial.base_url ?? "https://api.z-api.io",
+      });
+    }
+  }, [initial?.instance_id, initial?.token, initial?.client_token, initial?.base_url]);
 
   return (
     <div className="space-y-6" dir="rtl">
@@ -208,7 +198,7 @@ function ZApiTab({
         )}
       </Button>
 
-      {ToastEl}
+
     </div>
   );
 }
@@ -273,12 +263,22 @@ function PromptTab({
     initial?.system_prompt?.startsWith("⚠️") ? "" : (initial?.system_prompt ?? "")
   );
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const { show, ToastEl } = useToast();
 
+  const utils = trpc.useUtils();
   const saveMutation = trpc.admin.saveBotSettings.useMutation({
-    onSuccess: () => show("تم حفظ شخصية البوت بنجاح", "success"),
-    onError: (e: { message: string }) => show(e.message, "error"),
+    onSuccess: () => {
+      toast.success("تم حفظ شخصية البوت بنجاح");
+      utils.admin.workspaces.invalidate();
+    },
+    onError: (e: { message: string }) => toast.error(e.message),
   });
+
+  useEffect(() => {
+    if (initial) {
+      setName(initial.business_name ?? businessName ?? "");
+      setPrompt(initial.system_prompt?.startsWith("⚠️") ? "" : (initial.system_prompt ?? ""));
+    }
+  }, [initial?.business_name, initial?.system_prompt, businessName]);
 
   const charCount = prompt.length;
   const isShort = charCount > 0 && charCount < 20;
@@ -371,7 +371,7 @@ function PromptTab({
         )}
       </Button>
 
-      {ToastEl}
+
     </div>
   );
 }
@@ -400,12 +400,35 @@ function HandoffTab({
     max_messages_before_handoff: initial?.max_messages_before_handoff ?? 12,
     is_bot_active: initial?.is_bot_active ?? true,
   });
-  const { show, ToastEl } = useToast();
 
+  const utils = trpc.useUtils();
   const saveMutation = trpc.admin.saveBotSettings.useMutation({
-    onSuccess: () => show("تم حفظ إعدادات التحويل بنجاح", "success"),
-    onError: (e: { message: string }) => show(e.message, "error"),
+    onSuccess: () => {
+      toast.success("تم حفظ إعدادات التحويل بنجاح");
+      utils.admin.workspaces.invalidate();
+    },
+    onError: (e: { message: string }) => toast.error(e.message),
   });
+
+  useEffect(() => {
+    if (initial) {
+      setForm({
+        business_name: initial.business_name ?? "",
+        system_prompt: initial.system_prompt ?? "",
+        handoff_phone: initial.handoff_phone ?? "",
+        handoff_name: initial.handoff_name ?? "المنسق",
+        max_messages_before_handoff: initial.max_messages_before_handoff ?? 12,
+        is_bot_active: initial.is_bot_active ?? true,
+      });
+    }
+  }, [
+    initial?.business_name,
+    initial?.system_prompt,
+    initial?.handoff_phone,
+    initial?.handoff_name,
+    initial?.max_messages_before_handoff,
+    initial?.is_bot_active,
+  ]);
 
   return (
     <div className="space-y-5" dir="rtl">
@@ -546,7 +569,7 @@ function HandoffTab({
         )}
       </Button>
 
-      {ToastEl}
+
     </div>
   );
 }
@@ -601,36 +624,40 @@ function SimulatorTab({ workspaceId }: { workspaceId: string }) {
         </Badge>
       </div>
 
-      <div className="flex-1 overflow-y-auto bg-[#efeae2] p-4 space-y-2">
+      <div className="flex-1 overflow-y-auto bg-muted/30 dark:bg-background/50 p-4 space-y-3">
         {messages.length === 0 && !messagesQuery.isLoading && (
-          <div className="flex flex-col items-center justify-center h-full gap-2 text-muted-foreground">
-            <MessageSquare className="h-10 w-10 opacity-20" />
+          <div className="flex flex-col items-center justify-center h-full gap-2 text-muted-foreground opacity-60">
+            <MessageSquare className="h-10 w-10" />
             <p className="text-sm">ابدأ المحادثة بكتابة رسالة أدناه</p>
           </div>
         )}
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`flex ${msg.direction === "inbound" ? "justify-end" : "justify-start"}`}
-          >
-            <div
-              className={`max-w-xs rounded-2xl px-4 py-2.5 text-sm shadow-sm ${
-                msg.direction === "inbound"
-                  ? "rounded-tr-sm bg-[#d9fdd3] text-gray-800"
-                  : "rounded-tl-sm bg-white text-gray-800"
-              }`}
+        <AnimatePresence>
+          {messages.map((msg) => (
+            <motion.div
+              initial={{ opacity: 0, y: 10, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              key={msg.id}
+              className={`flex ${msg.direction === "inbound" ? "justify-end" : "justify-start"}`}
             >
-              <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
-              <p className="mt-1 text-left text-[10px] text-gray-400">
-                {new Date(msg.timestamp).toLocaleTimeString("ar-SA", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-                {msg.direction === "inbound" ? " ✓✓" : ""}
-              </p>
-            </div>
-          </div>
-        ))}
+              <div
+                className={`max-w-xs rounded-2xl px-4 py-2.5 text-sm shadow-sm border ${
+                  msg.direction === "inbound"
+                    ? "rounded-tr-sm bg-primary/10 border-primary/20 text-foreground"
+                    : "rounded-tl-sm bg-card border-border text-foreground"
+                }`}
+              >
+                <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                <p className="mt-1.5 text-left text-[10px] text-muted-foreground font-mono">
+                  {new Date(msg.timestamp).toLocaleTimeString("ar-SA", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                  {msg.direction === "inbound" ? " ✓✓" : ""}
+                </p>
+              </div>
+            </motion.div>
+          ))}
+        </AnimatePresence>
         {sendMutation.isPending && (
           <div className="flex justify-start">
             <div className="rounded-2xl rounded-tl-sm bg-white px-4 py-2.5 shadow-sm">
@@ -687,29 +714,26 @@ export default function BotSettings() {
   const workspaceId = params.workspaceId;
   const [, navigate] = useLocation();
 
-  const { data: allWorkspaces, isLoading } = trpc.admin.workspaces.useQuery();
+  const { data: allWorkspaces, isLoading, isFetching } = trpc.admin.workspaces.useQuery(
+    undefined,
+    { staleTime: 30_000 } // 30 ثانية — تمنع إعادة الفتش عند الانتقال بين الصفحات
+  );
   const workspaceRow = allWorkspaces?.find((w: any) => w.workspace.id === workspaceId);
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-32" dir="rtl">
-        <div className="flex items-center gap-3 text-muted-foreground">
-          <Loader2 className="h-5 w-5 animate-spin" />
-          جاري التحميل...
-        </div>
-      </div>
-    );
+  // Show loading if: initial load OR no workspaceId OR still fetching and no cached match yet
+  if (!workspaceId || isLoading || (isFetching && !workspaceRow)) {
+    return <PageSkeleton />;
   }
 
   if (!workspaceRow) {
     return (
-      <div className="flex flex-col items-center justify-center py-32 gap-4" dir="rtl">
+      <PageTransition className="flex flex-col items-center justify-center py-32 gap-4" dir="rtl">
         <AlertCircle className="h-12 w-12 text-muted-foreground/30" />
         <p className="text-muted-foreground">الـ Workspace غير موجود</p>
         <Button variant="outline" onClick={() => navigate("/workspaces")}>
           العودة للعملاء
         </Button>
-      </div>
+      </PageTransition>
     );
   }
 
@@ -743,7 +767,7 @@ export default function BotSettings() {
   ];
 
   return (
-    <div className="space-y-5" dir="rtl">
+    <PageTransition className="space-y-5" dir="rtl">
       {/* Page Header */}
       <div className="flex items-center gap-3">
         <Button
@@ -800,7 +824,7 @@ export default function BotSettings() {
           ))}
         </TabsList>
 
-        <div className="mt-4 rounded-xl border bg-card p-6">
+        <div className="mt-4 rounded-xl border bg-card p-6 overflow-hidden">
           <TabsContent value="zapi" className="mt-0">
             <ZApiTab workspaceId={workspace.id} initial={zapiConfig ?? undefined} />
           </TabsContent>
@@ -823,6 +847,6 @@ export default function BotSettings() {
           </TabsContent>
         </div>
       </Tabs>
-    </div>
+    </PageTransition>
   );
 }

@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/lib/trpc";
 import { Loader2, MessageSquare, Send, RefreshCw, Zap } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
+import { PageTransition } from "../components/PageTransition";
 
 interface SimulatedMessage {
   id: string;
@@ -113,7 +114,7 @@ export default function Simulator() {
   };
 
   return (
-    <div className="space-y-6" dir="rtl">
+    <PageTransition className="space-y-6" dir="rtl">
       {/* Page Header */}
       <div>
         <h1 className="text-2xl font-bold tracking-tight">محاكي المحادثات</h1>
@@ -331,6 +332,6 @@ export default function Simulator() {
           </div>
         </Card>
       </div>
-    </div>
+    </PageTransition>
   );
 }
