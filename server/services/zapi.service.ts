@@ -39,6 +39,7 @@ export interface ExtractedWebhookMessage {
   phone: string;
   message: string;
   messageType: string;
+  audioUrl?: string;   // ← يُمرَّر عند الفويس لتحويله لنص لاحقاً
 }
 
 // ─── Core: Send Message ───────────────────────────────────────────────────────
@@ -169,7 +170,22 @@ export function extractMessageFromWebhook(
     return { instanceId, phone, message: payload.video.caption, messageType: "video" };
   }
 
-  // إذا كان نوعاً آخر (صوت، مستند، إلخ) ولكن له نوع محدد
+  // رسائل الصوت (audio) والـ PTT (push-to-talk = فويسات واتساب)
+  // نُمرِّر الـ audioUrl ليتم تحويله لنص في webhook handler
+  if (
+    (payload.type === "audio" || payload.type === "ptt") &&
+    payload.audio?.audioUrl
+  ) {
+    return {
+      instanceId,
+      phone,
+      message: "[audio]",        // placeholder — سيُستبدَل بالنص بعد التحويل
+      messageType: "audio",
+      audioUrl: payload.audio.audioUrl,
+    };
+  }
+
+  // أنواع أخرى (مستند، موقع، إلخ) — نُخبر البوت بالنوع
   if (payload.type && payload.type !== "text") {
     return { instanceId, phone, message: `[${payload.type}]`, messageType: payload.type };
   }

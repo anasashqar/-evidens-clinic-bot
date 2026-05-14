@@ -328,3 +328,76 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
 
   return (await response.json()) as InvokeResult;
 }
+
+// ─── Whisper: Audio Transcription ────────────────────────────────────────────
+
+/**
+ * يحوّل ملف صوتي (فويس واتساب) إلى نص باستخدام Groq Whisper Large V3
+ *
+ * الخطوات:
+ *  1. تحميل الملف الصوتي من الـ URL الذي يرسله Z-API
+ *  2. إرساله لـ Groq Whisper API كـ multipart/form-data
+ *  3. إرجاع النص المُحوَّل
+ *
+ * ملاحظات:
+ *  - يستخدم نفس GROQ_API_KEY بدون أي إعداد إضافي
+ *  - يدعم العربية والإنجليزية وغيرها تلقائياً (language: auto)
+ *  - الحد الأقصى للملف: 25MB (فويسات واتساب عادةً أقل من 1MB)
+ */
+export async function transcribeAudio(audioUrl: string): Promise<string> {
+  assertApiKey();
+
+  // 1. تحميل الملف الصوتي من Z-API
+  const audioResponse = await fetch(audioUrl);
+  if (!audioResponse.ok) {
+    throw new Error(
+      `[Whisper] Failed to download audio: ${audioResponse.status} ${audioResponse.statusText}`
+    );
+  }
+
+  const audioBuffer = await audioResponse.arrayBuffer();
+  if (audioBuffer.byteLength === 0) {
+    throw new Error("[Whisper] Downloaded audio file is empty");
+  }
+
+  // 2. تجهيز الـ FormData — واتساب يرسل OGG/Opus عادةً
+  const contentType =
+    audioResponse.headers.get("content-type") ?? "audio/ogg";
+  const extension = contentType.includes("mp4")
+    ? "m4a"
+    : contentType.includes("mpeg") || contentType.includes("mp3")
+      ? "mp3"
+      : contentType.includes("wav")
+        ? "wav"
+        : "ogg";
+
+  const audioBlob = new Blob([audioBuffer], { type: contentType });
+
+  const formData = new FormData();
+  formData.append("file", audioBlob, `voice.${extension}`);
+  formData.append("model", "whisper-large-v3");
+  formData.append("response_format", "json");
+  // language=auto: Whisper يكتشف اللغة تلقائياً (عربي/إنجليزي/إلخ)
+
+  // 3. إرسال لـ Groq Whisper API
+  const response = await fetch(
+    "https://api.groq.com/openai/v1/audio/transcriptions",
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+      },
+      body: formData,
+    }
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `[Whisper] Groq API error: ${response.status} ${response.statusText} – ${errorText}`
+    );
+  }
+
+  const result = (await response.json()) as { text: string };
+  return result.text?.trim() ?? "";
+}

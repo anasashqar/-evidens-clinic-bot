@@ -44,6 +44,7 @@ import {
   extractMessageFromWebhook,
   type ZApiWebhookPayload,
 } from "../services/zapi.service";
+import { transcribeAudio } from "../_core/llm";
 
 export const appRouter = router({
   system: systemRouter,
@@ -79,11 +80,34 @@ export const appRouter = router({
             `[Webhook] instanceId=${extracted.instanceId} phone=${extracted.phone} type=${extracted.messageType}`
           );
 
-          // ← instanceId يوجّه الرسالة للـ workspace الصحيح تلقائياً
+          // ─── تحويل الفويس لنص قبل إرساله للبوت ───────────────────────────
+          let finalMessage = extracted.message;
+
+          if (extracted.messageType === "audio" && extracted.audioUrl) {
+            try {
+              console.log(`[Webhook] 🎙️ Transcribing audio for ${extracted.phone}...`);
+              const transcribed = await transcribeAudio(extracted.audioUrl);
+
+              if (transcribed) {
+                finalMessage = transcribed;
+                console.log(`[Webhook] ✓ Transcribed: "${transcribed.slice(0, 80)}${transcribed.length > 80 ? '...' : ''}"`)
+              } else {
+                // الملف صوتي لكن لم يُنتج نصاً (صمت أو ضوضاء)
+                console.warn(`[Webhook] Empty transcription for ${extracted.phone} — skipping`);
+                return { success: true, message: "Empty audio" };
+              }
+            } catch (transcribeError) {
+              console.error(`[Webhook] Transcription failed:`, transcribeError);
+              // لا نوقف الـ webhook — نتجاهل الرسالة بدل الـ crash
+              return { success: true, message: "Audio transcription failed" };
+            }
+          }
+
+          // ← finalMessage: نص حقيقي سواء كان نصياً أصلاً أو محوَّلاً من فويس
           await handleIncomingMessage(
             extracted.instanceId,
             extracted.phone,
-            extracted.message
+            finalMessage
           );
 
           return { success: true, message: "Processed" };
