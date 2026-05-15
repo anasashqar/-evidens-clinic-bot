@@ -390,6 +390,7 @@ function HandoffTab({
     handoff_name?: string | null;
     max_messages_before_handoff?: number;
     is_bot_active?: boolean;
+    handoff_message_template?: string | null;
   };
 }) {
   const [form, setForm] = useState({
@@ -399,6 +400,7 @@ function HandoffTab({
     handoff_name: initial?.handoff_name ?? "المنسق",
     max_messages_before_handoff: initial?.max_messages_before_handoff ?? 12,
     is_bot_active: initial?.is_bot_active ?? true,
+    handoff_message_template: initial?.handoff_message_template ?? "",
   });
 
   const utils = trpc.useUtils();
@@ -419,6 +421,7 @@ function HandoffTab({
         handoff_name: initial.handoff_name ?? "المنسق",
         max_messages_before_handoff: initial.max_messages_before_handoff ?? 12,
         is_bot_active: initial.is_bot_active ?? true,
+        handoff_message_template: initial.handoff_message_template ?? "",
       });
     }
   }, [
@@ -428,6 +431,7 @@ function HandoffTab({
     initial?.handoff_name,
     initial?.max_messages_before_handoff,
     initial?.is_bot_active,
+    initial?.handoff_message_template,
   ]);
 
   return (
@@ -527,22 +531,80 @@ function HandoffTab({
         </CardContent>
       </Card>
 
-      {/* معاينة رسالة التحويل */}
-      {form.handoff_phone && (
-        <Card className="border-primary/20 bg-primary/5">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs text-primary">معاينة رسالة التحويل للمنسق</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="rounded-lg bg-background p-3 text-xs text-muted-foreground whitespace-pre-line border font-mono leading-relaxed">
-              {`🔔 *طلب جديد - ${initial?.business_name ?? "البزنس"}*\n\n👤 *العميل:* [اسم الزبون]\n📱 *الهاتف:* [رقم الزبون]\n\n📋 *ملخص المحادثة:*\n[ملخص تلقائي من البوت]\n\n---\nيرجى التواصل مع العميل في أقرب وقت.`}
+      {/* قالب رسالة التحويل المخصص */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">قالب رسالة المنسق</CardTitle>
+          <CardDescription className="text-xs">
+            اكتب قالبك باستخدام المتغيرات أدناه. إذا تركته فارغاً يُستخدم القالب الافتراضي.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* بطاقة المتغيرات */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+            {[
+              { key: "{name}", label: "الاسم" },
+              { key: "{phone}", label: "رقم الهاتف" },
+              { key: "{phone_link}", label: "رابط واتساب" },
+              { key: "{concern}", label: "الطلب/الخدمة" },
+              { key: "{preferred_period}", label: "الوقت المفضل" },
+              { key: "{is_urgent}", label: "مستعجل/عادي" },
+              { key: "{is_returning}", label: "جديد/عائد" },
+              { key: "{response_time}", label: "وقت الاستجابة" },
+              { key: "{message_count}", label: "عدد الرسائل" },
+              { key: "{business_name}", label: "اسم البزنس" },
+            ].map(({ key, label }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() =>
+                  setForm((f) => ({
+                    ...f,
+                    handoff_message_template: f.handoff_message_template + key,
+                  }))
+                }
+                className="flex flex-col items-start rounded-lg border border-dashed border-primary/40 bg-primary/5 px-2 py-1.5 text-left hover:bg-primary/10 transition-colors"
+              >
+                <span className="font-mono text-[10px] text-primary">{key}</span>
+                <span className="text-[10px] text-muted-foreground">{label}</span>
+              </button>
+            ))}
+          </div>
+
+          <textarea
+            className="w-full rounded-lg border border-input bg-background px-4 py-3 text-sm leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-ring font-mono"
+            rows={8}
+            placeholder={`🔔 *عميل جديد*\n━━━━━━━━━━━━━━━━━━━━\n👤 الاسم: {name}\n📞 الهاتف: {phone}\n🔗 واتساب: {phone_link}\n🔧 الطلب: {concern}\n⏰ التفضيل: {preferred_period}\n⚡ الإلحاح: {is_urgent}`}
+            value={form.handoff_message_template}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, handoff_message_template: e.target.value }))
+            }
+            dir="rtl"
+          />
+
+          {/* معاينة حية */}
+          {form.handoff_message_template && (
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-muted-foreground">معاينة الرسالة</p>
+              <div className="rounded-xl border bg-muted/40 px-4 py-3 text-sm whitespace-pre-line leading-relaxed font-mono text-foreground">
+                {form.handoff_message_template
+                  .replace(/\{name\}/g, "سارة الأحمدي")
+                  .replace(/\{phone\}/g, "966501234567")
+                  .replace(/\{phone_link\}/g, "wa.me/966501234567")
+                  .replace(/\{concern\}/g, "تنظيف وتبييض")
+                  .replace(/\{preferred_period\}/g, "مساء الأسبوع القادم")
+                  .replace(/\{is_urgent\}/g, "عادي")
+                  .replace(/\{is_returning\}/g, "جديد 🆕")
+                  .replace(/\{response_time\}/g, "4 دقائق")
+                  .replace(/\{message_count\}/g, "6")
+                  .replace(/\{business_name\}/g, initial?.business_name || "البزنس")}
+              </div>
             </div>
-            <p className="text-xs text-primary mt-2">
-              ستُرسل لـ {form.handoff_name} على {form.handoff_phone}
-            </p>
-          </CardContent>
-        </Card>
-      )}
+          )}
+        </CardContent>
+      </Card>
+
+
 
       <Button
         onClick={() =>
@@ -554,6 +616,7 @@ function HandoffTab({
             handoff_name: form.handoff_name || undefined,
             max_messages_before_handoff: form.max_messages_before_handoff,
             is_bot_active: form.is_bot_active,
+            handoff_message_template: form.handoff_message_template || null,
           })
         }
         disabled={saveMutation.isPending}

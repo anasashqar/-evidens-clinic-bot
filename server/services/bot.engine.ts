@@ -69,10 +69,19 @@ interface LLMStructuredOutput {
   /** المعلومات المستخرجة من رسالة المستخدم */
   extracted: {
     name: string | null;
+    /** رقم هاتف ذكره المستخدم صراحةً في الحوار (غير رقم الواتساب) */
+    phone: string | null;
     concern: string | null;
     preferred_period: string | null;
     is_returning: boolean | null;
+    /** هل الحالة مستعجلة؟ — مهم للعيادات والطوارئ */
+    is_urgent: boolean | null;
   };
+  /**
+   * حالة طوارئ — يُفعّل handoff فوري بدون انتظار اكتمال البيانات
+   * علامات: تورم / خراج / نزيف / كسر / ألم لا يُحتمل
+   */
+  is_emergency: boolean;
   /** هل البوت قرر التحويل للمنسق؟ */
   should_handoff: boolean;
   /** سبب التحويل — يُحفظ في handoff.reason */
@@ -127,10 +136,13 @@ const JSON_FORMAT_INSTRUCTION = `
   "message": "ردك الكامل للمستخدم هنا",
   "extracted": {
     "name": "الاسم الشخصي فقط (كلمة أو كلمتان) أو null",
+    "phone": "رقم الهاتف الذي ذكره المستخدم صراحةً في الحوار (ليس رقم واتساب) أو null",
     "concern": "سبب الزيارة أو الخدمة المطلوبة أو null",
     "preferred_period": "الوقت المفضل (صباحاً/مساءً/تاريخ) أو null",
-    "is_returning": true أو false أو null
+    "is_returning": true أو false أو null,
+    "is_urgent": true إذا ذكر صراحة أن الأمر عاجل أو يؤلمه أو يريد أسرع موعد — وإلا false أو null
   },
+  "is_emergency": false,
   "should_handoff": false,
   "handoff_reason": null,
   "should_be_silent": false,
@@ -141,7 +153,11 @@ const JSON_FORMAT_INSTRUCTION = `
 
 قواعد الاستخراج:
 - name: الاسم الشخصي فقط، لا جمل ولا أوصاف
+- phone: أي رقم هاتف يذكره المستخدم داخل الحوار — احفظه كما هو بدون تنسيق
 - is_returning: true فقط إذا ذكر صراحة أنه زار من قبل
+- is_urgent: true فقط عند إلحاح أو ألم أو طارئ — وإلا false
+- is_emergency: true فقط عند علامات طوارئ واضحة (تورم وجه/رقبة، خراج، نزيف لا يتوقف، كسر، ألم حاد لا يُحتمل)
+  → عند is_emergency: true يجب أيضاً: should_handoff: true و handoff_reason: "emergency"
 - should_handoff: true عندما تكتمل المعلومات الأساسية وأنت جاهز للتحويل
 - should_handoff: true أيضاً عند غضب أو شكوى أو حالة حساسة أو طلب غير واضح لكنه مهم — البشر أولاً
 - إذا المعلومة غير موجودة في الرسالة: null
@@ -330,6 +346,7 @@ async function processWithAI(context: BotContext, userMessage: string): Promise<
         { role: "system", content: JSON_FORMAT_INSTRUCTION },       // ← تعليمات الـ JSON
         ...conversationHistory,
       ],
+      responseFormat: { type: "json_object" },  // ← يجبر الموديل على JSON نظيف
     });
 
     const rawContent =
@@ -362,9 +379,14 @@ async function processWithAI(context: BotContext, userMessage: string): Promise<
     // │  يحلّ BUG #2: performHandoff الآن يقرأ البيانات المحدّثة           │
     // └─────────────────────────────────────────────────────────────────────┘
     if (extracted.name && !currentCtx.name) currentCtx.name = extracted.name;
+    // phone: رقم هاتف ذكره المستخدم صراحةً في الحوار (مختلف عن رقم الواتساب)
+    if (extracted.phone && !currentCtx.extracted_phone) currentCtx.extracted_phone = extracted.phone;
     if (extracted.concern && !currentCtx.concern) currentCtx.concern = extracted.concern;
     if (extracted.preferred_period && !currentCtx.preferred_period)
       currentCtx.preferred_period = extracted.preferred_period;
+    // is_urgent / is_emergency: يُحدَّثان فقط إذا أصبحا true (مرة واحدة يكفي)
+    if (extracted.is_urgent === true) currentCtx.is_urgent = true;
+    if (structured.is_emergency === true) currentCtx.is_emergency = true;
 
     // تحديث بيانات المريض في DB إن لزم
     const patientUpdates: Partial<Pick<Patient, "name" | "is_returning_patient">> = {};
@@ -378,9 +400,12 @@ async function processWithAI(context: BotContext, userMessage: string): Promise<
 
     // ─── قرار الـ handoff ─────────────────────────────────────────────────────
     const hitMessageLimit = messageCount >= botSettings.max_messages_before_handoff;
-    const shouldHandoff = should_handoff || hitMessageLimit;
+    const isEmergency = structured.is_emergency === true;
+    const shouldHandoff = should_handoff || hitMessageLimit || isEmergency;
 
-    if (hitMessageLimit && !should_handoff) {
+    if (isEmergency) {
+      console.log(`${tag} 🚨 Emergency detected — forcing immediate handoff for ${context.patient.phone}`);
+    } else if (hitMessageLimit && !should_handoff) {
       console.log(`${tag} Hit message limit (${messageCount}/${botSettings.max_messages_before_handoff}) — forcing handoff`);
     }
 
@@ -533,13 +558,44 @@ async function buildPatientHistorySummary(context: BotContext): Promise<string> 
  */
 function parseStructuredOutput(raw: string, tag: string): LLMStructuredOutput | null {
   try {
-    const cleaned = raw
+    // ─── تنظيف متعدد المراحل — يتعامل مع كل أشكال المخرجات ───────────────
+    let cleaned = raw
       .replace(/^```json\s*/i, "")
       .replace(/^```\s*/i, "")
       .replace(/```\s*$/i, "")
       .trim();
 
-    const parsed = JSON.parse(cleaned) as LLMStructuredOutput;
+    // المرحلة 1: محاولة parse مباشر
+    let parsed: LLMStructuredOutput | null = null;
+    try {
+      parsed = JSON.parse(cleaned) as LLMStructuredOutput;
+    } catch {
+      // المرحلة 2: استخراج JSON من نص مختلط (الموديل أرسل نصاً + JSON)
+      const jsonMatch = cleaned.match(/\{[\s\S]*"message"[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          parsed = JSON.parse(jsonMatch[0]) as LLMStructuredOutput;
+          console.log(`${tag} Extracted JSON from mixed output`);
+        } catch {
+          // المرحلة 3: محاولة أخيرة — ابحث عن أول { وآخر }
+          const firstBrace = cleaned.indexOf("{");
+          const lastBrace = cleaned.lastIndexOf("}");
+          if (firstBrace !== -1 && lastBrace > firstBrace) {
+            try {
+              parsed = JSON.parse(cleaned.slice(firstBrace, lastBrace + 1)) as LLMStructuredOutput;
+              console.log(`${tag} Extracted JSON by brace matching`);
+            } catch {
+              // فشل نهائي
+            }
+          }
+        }
+      }
+    }
+
+    if (!parsed) {
+      console.warn(`${tag} Failed to parse structured output from LLM`);
+      return null;
+    }
 
     // تحقق من الحقول الأساسية
     if (typeof parsed.message !== "string") {
@@ -548,7 +604,10 @@ function parseStructuredOutput(raw: string, tag: string): LLMStructuredOutput | 
     }
 
     // قيم افتراضية آمنة إذا نسيها البوت
-    parsed.extracted = parsed.extracted ?? { name: null, concern: null, preferred_period: null, is_returning: null };
+    parsed.extracted = parsed.extracted ?? { name: null, phone: null, concern: null, preferred_period: null, is_returning: null, is_urgent: null };
+    parsed.extracted.phone = parsed.extracted.phone ?? null;
+    parsed.extracted.is_urgent = parsed.extracted.is_urgent ?? null;
+    parsed.is_emergency = parsed.is_emergency ?? false;
     parsed.should_handoff = parsed.should_handoff ?? false;
     parsed.handoff_reason = parsed.handoff_reason ?? null;
     parsed.should_be_silent = parsed.should_be_silent ?? false;
@@ -590,7 +649,7 @@ async function performHandoff(
   });
 
   // بناء ملخص الـ handoff من الـ context المحدَّث
-  const summary = buildHandoffSummary(ctx, context.patient);
+  const summary = buildHandoffSummary(ctx, context.patient, botSettings, context.conversation.started_at);
 
   // احفظ سجل الـ handoff
   await createHandoff({
@@ -619,18 +678,62 @@ async function performHandoff(
   console.log(`[BotEngine][${workspace.slug}] ✓ Handoff created for ${context.patient.phone} | reason: ${reason}`);
 }
 
-/** يبني نص ملخص الـ handoff من الـ context */
+/** يبني نص ملخص الـ handoff — يستخدم القالب المخصص إذا وُجد، وإلا القالب الافتراضي */
 function buildHandoffSummary(
   ctx: Record<string, unknown>,
-  patient: Patient
+  patient: Patient,
+  botSettings: WorkspaceBotSettings,
+  conversationStartedAt: Date
 ): string {
+  // ─── حساب وقت الاستجابة ─────────────────────────────────────────────────────
+  const elapsedMs = Date.now() - new Date(conversationStartedAt).getTime();
+  const elapsedMin = Math.round(elapsedMs / 60_000);
+  const responseTime =
+    elapsedMin < 1 ? "أقل من دقيقة" : `${elapsedMin} دقيقة`;
+
+  // ─── قيم جاهزة للاستبدال ────────────────────────────────────────────────────
+  const name        = (ctx.name as string) ?? "غير محدد";
+  const concern     = ((ctx.concern ?? ctx.need) as string) ?? "غير محددة";
+  const period      = ((ctx.preferred_period ?? ctx.time_preference) as string) ?? "غير محدد";
+  const isUrgent    = (ctx.is_urgent as boolean) ? "⚡ مستعجل" : "عادي";
+  const isReturning = patient.is_returning_patient ? "عائد ✅" : "جديد 🆕";
+  const msgCount    = String((ctx.message_count as number) ?? "—");
+  const bizName     = botSettings.business_name ?? "";
+  // رقم الهاتف المستخرج: المذكور في الحوار أولاً، ثم رقم الواتساب
+  const contactPhone = (ctx.extracted_phone as string) ?? patient.phone;
+  const contactLink  = `https://wa.me/${contactPhone.replace(/\D/g, "")}`;
+  const emergencyTag = (ctx.is_emergency as boolean) ? "\n\ud83d\udea8 *حالة طوارئ — يحتاج رداً فوريًا*" : "";
+
+  // ─── القالب المخصص ──────────────────────────────────────────────────────────
+  if (botSettings.handoff_message_template) {
+    return botSettings.handoff_message_template
+      .replace(/\{name\}/g,             name)
+      .replace(/\{phone\}/g,            contactPhone)
+      .replace(/\{phone_link\}/g,       contactLink)
+      .replace(/\{concern\}/g,          concern)
+      .replace(/\{preferred_period\}/g, period)
+      .replace(/\{is_urgent\}/g,        isUrgent)
+      .replace(/\{is_returning\}/g,     isReturning)
+      .replace(/\{message_count\}/g,    msgCount)
+      .replace(/\{response_time\}/g,    responseTime)
+      .replace(/\{business_name\}/g,    bizName);
+  }
+
+  // ─── القالب الافتراضي ───────────────────────────────────────────────────────
   return [
-    `الاسم: ${(ctx.name as string) ?? "غير محدد"}`,
-    `الهاتف: ${patient.phone}`,
-    `الحاجة: ${((ctx.concern ?? ctx.need) as string) ?? "غير محددة"}`,
-    `تفضيل الموعد: ${((ctx.preferred_period ?? ctx.time_preference) as string) ?? "غير محدد"}`,
-    `عميل عائد: ${patient.is_returning_patient ? "نعم" : "لا"}`,
-    `عدد الرسائل: ${(ctx.message_count as number) ?? "—"}`,
+    `🔔 *عميل جاهز — ${bizName}*${emergencyTag}`,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `👤 الاسم: ${name}`,
+    `📞 واتساب: ${patient.phone}`,
+    ...(contactPhone !== patient.phone ? [`📞 هاتف مدخول: ${contactPhone}`] : []),
+    `🔗 رابط: ${contactLink}`,
+    `🔧 الطلب: ${concern}`,
+    `⏰ التفضيل: ${period}`,
+    `⚡ الإلحاح: ${isUrgent}`,
+    `🔁 النوع: ${isReturning}`,
+    `━━━━━━━━━━━━━━━━━━━━`,
+    `⏱ وقت الاستجابة: ${responseTime}`,
+    `💬 عدد الرسائل: ${msgCount}`,
   ].join("\n");
 }
 

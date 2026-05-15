@@ -96,6 +96,22 @@ export const workspaceBotSettings = pgTable("workspace_bot_settings", {
   handoff_name: varchar("handoff_name", { length: 255 }).default("المنسق"), // اسم يُذكر للمستخدم
   max_messages_before_handoff: integer("max_messages_before_handoff").default(12).notNull(),
   is_bot_active: boolean("is_bot_active").default(true).notNull(),
+  /**
+   * قالب رسالة التحويل — يُخصَّص لكل workspace
+   * المتغيرات المدعومة:
+   *   {name}            الاسم
+   *   {phone}           رقم الهاتف
+   *   {phone_link}      رابط واتساب مباشر (wa.me/...)
+   *   {concern}         الطلب أو الخدمة
+   *   {preferred_period} الوقت المفضل
+   *   {is_urgent}       ⚡ مستعجل | عادي
+   *   {is_returning}    عائد ✅ | جديد 🆕
+   *   {message_count}   عدد الرسائل
+   *   {response_time}   وقت الاستجابة
+   *   {business_name}   اسم البزنس
+   * إذا كان null → يُستخدم القالب الافتراضي
+   */
+  handoff_message_template: text("handoff_message_template"),
   created_at: timestamp("created_at").defaultNow().notNull(),
   updated_at: timestamp("updated_at").defaultNow().notNull(),
 });

@@ -51,6 +51,11 @@ export default function Simulator() {
   );
 
   useEffect(() => {
+    // Don't overwrite optimistic messages while waiting for the bot's reply.
+    // The mutation being pending means we already added the user message locally;
+    // if we let the refetch replace state now it would vanish until the bot responds.
+    if (simulateMessageMutation.isPending) return;
+
     if (serverMessages && serverMessages.length > 0) {
       setMessages(
         serverMessages.map((m: any) => ({
@@ -61,7 +66,7 @@ export default function Simulator() {
         }))
       );
     }
-  }, [serverMessages]);
+  }, [serverMessages, simulateMessageMutation.isPending]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });

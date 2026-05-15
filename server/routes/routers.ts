@@ -196,6 +196,8 @@ export const appRouter = router({
           handoff_name: z.string().optional(),
           max_messages_before_handoff: z.number().min(3).max(50).optional(),
           is_bot_active: z.boolean().optional(),
+          /** قالب رسالة المنسق — null يعني استخدام القالب الافتراضي */
+          handoff_message_template: z.string().nullable().optional(),
         })
       )
       .mutation(async ({ input }) => {
