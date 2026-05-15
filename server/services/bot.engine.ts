@@ -32,7 +32,7 @@ import type {
   Patient,
   Conversation,
 } from "../../drizzle/schema";
-import { sendMessageWithConfig, notifyHandoffWithConfig } from "./zapi.service";
+import { sendMessageWithConfig, sendReplyWithConfig, notifyHandoffWithConfig } from "./zapi.service";
 import { invokeLLM } from "../_core/llm";
 import {
   getWorkspaceByInstanceId,
@@ -190,7 +190,13 @@ export async function handleIncomingMessage(
   phone: string,
   message: string,
   isSimulator: boolean = false,
-  simulatorWorkspaceId?: string
+  simulatorWorkspaceId?: string,
+  /**
+   * messageId آخر رسالة من المستخدم في الـ batch
+   * يُستخدم لإرسال الرد كـ quoted reply على واتساب
+   * undefined في حالة الـ simulator أو إذا لم يتوفر
+   */
+  quotedMessageId?: string
 ): Promise<void> {
   try {
     // ─── Phase 1: Workspace Resolution ───────────────────────────────────────
@@ -253,7 +259,8 @@ export async function handleIncomingMessage(
     // ─── Phase 3: AI Processing ───────────────────────────────────────────────
     await processWithAI(
       { workspaceConfig, patient, conversation, isSimulator },
-      message
+      message,
+      quotedMessageId
     );
   } catch (error) {
     console.error("[BotEngine] Unhandled error:", error);
@@ -284,7 +291,11 @@ async function resolveWorkspaceByInstance(
 // PHASE 3: AI Processing
 // ═════════════════════════════════════════════════════════════════════════════
 
-async function processWithAI(context: BotContext, userMessage: string): Promise<void> {
+async function processWithAI(
+  context: BotContext,
+  userMessage: string,
+  quotedMessageId?: string
+): Promise<void> {
   const { botSettings } = context.workspaceConfig;
   const tag = `[BotEngine][${context.workspaceConfig.workspace.slug}]`;
 
@@ -457,9 +468,9 @@ async function processWithAI(context: BotContext, userMessage: string): Promise<
 
     // ─── تنفيذ القرار ────────────────────────────────────────────────────────
     if (shouldHandoff) {
-      await performHandoff(context, botResponse, handoff_reason ?? "qualification_complete");
+      await performHandoff(context, botResponse, handoff_reason ?? "qualification_complete", quotedMessageId);
     } else {
-      await sendBotMessage(context, botResponse);
+      await sendBotMessage(context, botResponse, quotedMessageId);
     }
   } catch (error) {
     console.error(`${tag} AI processing error:`, error);
@@ -632,14 +643,15 @@ function parseStructuredOutput(raw: string, tag: string): LLMStructuredOutput | 
 async function performHandoff(
   context: BotContext,
   lastBotMessage: string,
-  reason: string
+  reason: string,
+  quotedMessageId?: string
 ): Promise<void> {
   const { workspace, botSettings, zapiConfig } = context.workspaceConfig;
   // context.conversation.context محدَّث في الذاكرة (تم في processWithAI)
   const ctx = (context.conversation.context as Record<string, unknown>) ?? {};
 
   // أرسل رسالة التحويل للمستخدم
-  await sendBotMessage(context, lastBotMessage);
+  await sendBotMessage(context, lastBotMessage, quotedMessageId);
 
   // حدّث حالة المحادثة في DB
   await updateConversation(context.conversation.id, {
@@ -737,14 +749,37 @@ function buildHandoffSummary(
   ].join("\n");
 }
 
-/** يرسل رسالة البوت عبر Z-API ويحفظها في DB */
-async function sendBotMessage(context: BotContext, message: string): Promise<void> {
+/**
+ * يرسل رسالة البوت عبر Z-API ويحفظها في DB
+ *
+ * إذا توفّر quotedMessageId (من الـ debouncer):
+ *   → يُرسَل الرد كـ quoted reply على آخر رسالة المستخدم
+ *   → يوضّح أن البوت فهم مجموع الرسائل المقطّعة، وليس آخرها فقط
+ *   → Fallback تلقائي لـ plain send إذا فشل الـ quoted reply
+ */
+async function sendBotMessage(
+  context: BotContext,
+  message: string,
+  quotedMessageId?: string
+): Promise<void> {
   if (!context.isSimulator) {
-    await sendMessageWithConfig(
-      context.patient.phone,
-      message,
-      context.workspaceConfig.zapiConfig
-    ).catch((err) => console.error(`[BotEngine] Z-API send error:`, err));
+    const sendFn =
+      quotedMessageId
+        ? () => sendReplyWithConfig(
+            context.patient.phone,
+            message,
+            context.workspaceConfig.zapiConfig,
+            quotedMessageId
+          )
+        : () => sendMessageWithConfig(
+            context.patient.phone,
+            message,
+            context.workspaceConfig.zapiConfig
+          );
+
+    await sendFn().catch((err) =>
+      console.error(`[BotEngine] Z-API send error:`, err)
+    );
   }
 
   await saveMessage({

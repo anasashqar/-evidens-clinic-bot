@@ -39,6 +39,7 @@ export interface ExtractedWebhookMessage {
   phone: string;
   message: string;
   messageType: string;
+  messageId?: string;  // ← للـ quoted reply: نردّ "على" رسالة المستخدم
   audioUrl?: string;   // ← يُمرَّر عند الفويس لتحويله لنص لاحقاً
 }
 
@@ -78,6 +79,58 @@ export async function sendMessageWithConfig(
   } catch (error) {
     console.error(`[Z-API][${config.instance_id}] Error sending:`, error);
     return false;
+  }
+}
+
+/**
+ * يرسل رداً مقتبساً (quoted reply) على رسالة محددة
+ *
+ * يُستخدم مع الـ debouncer: نردّ "على" آخر رسالة من المستخدم
+ * مما يوضّح للمستخدم أن البوت فهم مجموع رسائله وليس آخرها فقط
+ *
+ * في Z-API، الـ quoted reply يتم بإضافة حقل quoted.messageId للـ body
+ * راجع: https://developer.z-api.io/message/send-text
+ *
+ * @param quotedMessageId - messageId الرسالة المراد الرد عليها
+ */
+export async function sendReplyWithConfig(
+  phone: string,
+  message: string,
+  config: WorkspaceZapiConfig,
+  quotedMessageId: string
+): Promise<boolean> {
+  const url = `${config.base_url}/instances/${config.instance_id}/token/${config.token}/send-text`;
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Client-Token": config.client_token,
+      },
+      body: JSON.stringify({
+        phone,
+        message,
+        quoted: { messageId: quotedMessageId },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.warn(
+        `[Z-API][${config.instance_id}] Quoted reply failed (${response.status}), falling back to plain send`,
+        errorText
+      );
+      // Fallback: أرسل بدون اقتباس إذا فشلت الـ quoted reply
+      return sendMessageWithConfig(phone, message, config);
+    }
+
+    console.log(`[Z-API][${config.instance_id}] ✓ Quoted reply sent to ${phone}`);
+    return true;
+  } catch (error) {
+    console.error(`[Z-API][${config.instance_id}] Error sending quoted reply:`, error);
+    // Fallback: أرسل بدون اقتباس
+    return sendMessageWithConfig(phone, message, config);
   }
 }
 
@@ -160,14 +213,16 @@ export function extractMessageFromWebhook(
   // 5. استخراج المحتوى حسب النوع
   if (!phone) return null;
 
+  const messageId = payload.messageId;
+
   if (payload.text?.message) {
-    return { instanceId, phone, message: payload.text.message, messageType: "text" };
+    return { instanceId, phone, message: payload.text.message, messageType: "text", messageId };
   }
   if (payload.type === "image" && payload.image?.caption) {
-    return { instanceId, phone, message: payload.image.caption, messageType: "image" };
+    return { instanceId, phone, message: payload.image.caption, messageType: "image", messageId };
   }
   if (payload.type === "video" && payload.video?.caption) {
-    return { instanceId, phone, message: payload.video.caption, messageType: "video" };
+    return { instanceId, phone, message: payload.video.caption, messageType: "video", messageId };
   }
 
   // رسائل الصوت (audio) والـ PTT (push-to-talk = فويسات واتساب)
@@ -181,13 +236,14 @@ export function extractMessageFromWebhook(
       phone,
       message: "[audio]",        // placeholder — سيُستبدَل بالنص بعد التحويل
       messageType: "audio",
+      messageId,
       audioUrl: payload.audio.audioUrl,
     };
   }
 
   // أنواع أخرى (مستند، موقع، إلخ) — نُخبر البوت بالنوع
   if (payload.type && payload.type !== "text") {
-    return { instanceId, phone, message: `[${payload.type}]`, messageType: payload.type };
+    return { instanceId, phone, message: `[${payload.type}]`, messageType: payload.type, messageId };
   }
 
   return null;

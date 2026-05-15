@@ -24,6 +24,7 @@ import { getSessionCookieOptions } from "../_core/cookies";
 import { systemRouter } from "../_core/systemRouter";
 import { adminProcedure, publicProcedure, router } from "../_core/trpc";
 import { handleIncomingMessage } from "../services/bot.engine";
+import { debounceMessage } from "../services/message.debouncer";
 import { z } from "zod";
 import {
   getAllWorkspaces,
@@ -59,10 +60,14 @@ export const appRouter = router({
     }),
   }),
 
-  // ─── Smart Webhook ──────────────────────────────────────────────────────────
+  // ─── Smart Webhook ────────────────────────────────────────────────────────────
   //
   //  نقطة استقبال واحدة لجميع الـ workspaces
   //  التوجيه يتم داخلياً بناءً على instanceId الموجود في كل webhook payload
+  //
+  //  الـ Debouncing:
+  //    الـ webhook يستجيب فوراً بـ "Queued"، والمعالجة تتم في الخلفية بعد 2.5 ثانية
+  //    إذا أرسل المستخدم رسائل متعددة بسرعة، تُدمج جميعها وتُعالج مرة واحدة
   //
   webhook: router({
     zapi: publicProcedure
@@ -80,37 +85,49 @@ export const appRouter = router({
             `[Webhook] instanceId=${extracted.instanceId} phone=${extracted.phone} type=${extracted.messageType}`
           );
 
-          // ─── تحويل الفويس لنص قبل إرساله للبوت ───────────────────────────
+          // ─── تحويل الفويس لنص (قبل الـ debouncing) ──────────────────────
+          //  التحويل يتم أولاً حتى ينجح دمج الفويسات مع الرسائل النصية في نفس الـ batch
           let finalMessage = extracted.message;
 
           if (extracted.messageType === "audio" && extracted.audioUrl) {
             try {
-              console.log(`[Webhook] 🎙️ Transcribing audio for ${extracted.phone}...`);
+              console.log(`[Webhook] 🎤 Transcribing audio for ${extracted.phone}...`);
               const transcribed = await transcribeAudio(extracted.audioUrl);
 
               if (transcribed) {
                 finalMessage = transcribed;
-                console.log(`[Webhook] ✓ Transcribed: "${transcribed.slice(0, 80)}${transcribed.length > 80 ? '...' : ''}"`)
+                console.log(`[Webhook] ✓ Transcribed: "${transcribed.slice(0, 80)}${transcribed.length > 80 ? "..." : ""}"`)
               } else {
-                // الملف صوتي لكن لم يُنتج نصاً (صمت أو ضوضاء)
                 console.warn(`[Webhook] Empty transcription for ${extracted.phone} — skipping`);
                 return { success: true, message: "Empty audio" };
               }
             } catch (transcribeError) {
               console.error(`[Webhook] Transcription failed:`, transcribeError);
-              // لا نوقف الـ webhook — نتجاهل الرسالة بدل الـ crash
               return { success: true, message: "Audio transcription failed" };
             }
           }
 
-          // ← finalMessage: نص حقيقي سواء كان نصياً أصلاً أو محوَّلاً من فويس
-          await handleIncomingMessage(
+          // ─── Debounce: اجمع الرسائل وعالجها معاً بعد 2.5 ثانية ─────────────
+          //  الـ webhook يستجيب فوراً، والمعالجة تتم في الخلفية بشكل async
+          debounceMessage(
             extracted.instanceId,
             extracted.phone,
-            finalMessage
+            finalMessage,
+            extracted.messageId,           // ← للـ quoted reply على آخر رسالة
+            async (combinedMessage, quotedMessageId) => {
+              await handleIncomingMessage(
+                extracted.instanceId,
+                extracted.phone,
+                combinedMessage,            // ← الرسائل مدموجة بـ \n
+                false,
+                undefined,
+                quotedMessageId             // ← للـ quoted reply
+              );
+            }
           );
 
-          return { success: true, message: "Processed" };
+          // الـ webhook يستجيب فوراً بدون انتظار المعالجة — Z-API لا ينتظر
+          return { success: true, message: "Queued" };
         } catch (error) {
           console.error("[Webhook] Error:", error);
           return { success: false, error: String(error) };
