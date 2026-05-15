@@ -23,6 +23,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "../_core/cookies";
 import { systemRouter } from "../_core/systemRouter";
 import { adminProcedure, publicProcedure, router } from "../_core/trpc";
+import { ENV } from "../_core/env";
 import { handleIncomingMessage } from "../services/bot.engine";
 import { debounceMessage } from "../services/message.debouncer";
 import { z } from "zod";
@@ -72,8 +73,19 @@ export const appRouter = router({
   webhook: router({
     zapi: publicProcedure
       .input(z.any())
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         try {
+          // Fix #1: تحقق من سر الـ webhook عبر query param
+          // أضف ?secret=YOUR_SECRET لـ URL في إعدادات Z-API
+          const webhookSecret = ENV.webhookSecret;
+          if (webhookSecret) {
+            const providedSecret = (ctx.req as any).query?.secret as string | undefined;
+            if (providedSecret !== webhookSecret) {
+              console.warn(`[Webhook] ⛔ Rejected request — invalid or missing secret`);
+              return { success: false, error: "Unauthorized" };
+            }
+          }
+
           const payload = input as ZApiWebhookPayload;
 
           const extracted = extractMessageFromWebhook(payload);
@@ -85,48 +97,50 @@ export const appRouter = router({
             `[Webhook] instanceId=${extracted.instanceId} phone=${extracted.phone} type=${extracted.messageType}`
           );
 
-          // ─── تحويل الفويس لنص (قبل الـ debouncing) ──────────────────────
-          //  التحويل يتم أولاً حتى ينجح دمج الفويسات مع الرسائل النصية في نفس الـ batch
-          let finalMessage = extracted.message;
-
-          if (extracted.messageType === "audio" && extracted.audioUrl) {
+          // Fix #7: جميع المعالجة (تحويل + debounce) تتم في الخلفية
+          // الـ webhook يستجيب فوراً — Z-API لا ينتظر ولا يُعيد المحاولة
+          void (async () => {
             try {
-              console.log(`[Webhook] 🎤 Transcribing audio for ${extracted.phone}...`);
-              const transcribed = await transcribeAudio(extracted.audioUrl);
+              let finalMessage = extracted.message;
 
-              if (transcribed) {
+              // تحويل الفويس لنص (قبل الـ debouncing حتى يندمج مع الرسائل النصية)
+              if (extracted.messageType === "audio" && extracted.audioUrl) {
+                console.log(`[Webhook] 🎤 Transcribing audio for ${extracted.phone}...`);
+                const transcribed = await transcribeAudio(extracted.audioUrl);
+
+                if (!transcribed) {
+                  console.warn(`[Webhook] Empty transcription for ${extracted.phone} — skipping`);
+                  return;
+                }
+
                 finalMessage = transcribed;
-                console.log(`[Webhook] ✓ Transcribed: "${transcribed.slice(0, 80)}${transcribed.length > 80 ? "..." : ""}"`)
-              } else {
-                console.warn(`[Webhook] Empty transcription for ${extracted.phone} — skipping`);
-                return { success: true, message: "Empty audio" };
+                console.log(`[Webhook] ✓ Transcribed: "${transcribed.slice(0, 80)}${transcribed.length > 80 ? "..." : ""}"`);
               }
-            } catch (transcribeError) {
-              console.error(`[Webhook] Transcription failed:`, transcribeError);
-              return { success: true, message: "Audio transcription failed" };
-            }
-          }
 
-          // ─── Debounce: اجمع الرسائل وعالجها معاً بعد 2.5 ثانية ─────────────
-          //  الـ webhook يستجيب فوراً، والمعالجة تتم في الخلفية بشكل async
-          debounceMessage(
-            extracted.instanceId,
-            extracted.phone,
-            finalMessage,
-            extracted.messageId,           // ← للـ quoted reply على آخر رسالة
-            async (combinedMessage, quotedMessageId) => {
-              await handleIncomingMessage(
+              // Fix #5: نمرّر batchSize للـ engine لعد الرسائل بشكل صحيح
+              debounceMessage(
                 extracted.instanceId,
                 extracted.phone,
-                combinedMessage,            // ← الرسائل مدموجة بـ \n
-                false,
-                undefined,
-                quotedMessageId             // ← للـ quoted reply
+                finalMessage,
+                extracted.messageId,           // ← للـ quoted reply على آخر رسالة
+                async (combinedMessage, quotedMessageId, batchSize) => {
+                  await handleIncomingMessage(
+                    extracted.instanceId,
+                    extracted.phone,
+                    combinedMessage,            // ← الرسائل مدموجة بـ \n
+                    false,
+                    undefined,
+                    quotedMessageId,            // ← للـ quoted reply
+                    batchSize                   // ← Fix #5: العدد الحقيقي
+                  );
+                }
               );
+            } catch (bgErr) {
+              console.error("[Webhook] Background processing error:", bgErr);
             }
-          );
+          })();
 
-          // الـ webhook يستجيب فوراً بدون انتظار المعالجة — Z-API لا ينتظر
+          // الـ webhook يستجيب فوراً بدون انتظار — Z-API لا يُعيد المحاولة
           return { success: true, message: "Queued" };
         } catch (error) {
           console.error("[Webhook] Error:", error);

@@ -7,4 +7,10 @@ export const ENV = {
   isProduction: process.env.NODE_ENV === "production",
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
+  /**
+   * سر الـ webhook — يُضاف كـ query param في URL الـ Z-API webhook
+   * مثال URL: https://yoursite.com/trpc/webhook.zapi?secret=YOUR_SECRET
+   * إذا كان فارغاً: لا يوجد تحقق (لبيئة التطوير فقط)
+   */
+  webhookSecret: process.env.WEBHOOK_SECRET ?? "",
 };

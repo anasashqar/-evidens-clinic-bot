@@ -191,12 +191,13 @@ export async function handleIncomingMessage(
   message: string,
   isSimulator: boolean = false,
   simulatorWorkspaceId?: string,
+  quotedMessageId?: string,
   /**
-   * messageId آخر رسالة من المستخدم في الـ batch
-   * يُستخدم لإرسال الرد كـ quoted reply على واتساب
-   * undefined في حالة الـ simulator أو إذا لم يتوفر
+   * عدد الرسائل الحقيقي في الـ batch — يأتي من الـ debouncer
+   * يُستخدم لتحديث message_count بشكل صحيح، وبالتالي منطق handoff صحيح
+   * القيمة الافتراضية 1 (للـ simulator وللرسائل الفردية)
    */
-  quotedMessageId?: string
+  incomingMessageCount: number = 1
 ): Promise<void> {
   try {
     // ─── Phase 1: Workspace Resolution ───────────────────────────────────────
@@ -233,17 +234,32 @@ export async function handleIncomingMessage(
     if (conversation.status === "handoff") {
       const latestHandoff = await getLatestHandoffForConversation(conversation.id);
 
-      if (latestHandoff?.status === "completed") {
-        // المنسق أنهى الـ handoff → محادثة جديدة تحمل ذاكرة المريض
+      const isCompleted = latestHandoff?.status === "completed";
+
+      // Fix #6: Auto-expiry — إذا مرت أكثر من 24 ساعة بدون تحديث → محادثة جديدة تلقائياً
+      const HANDOFF_EXPIRY_MS = 24 * 60 * 60 * 1000;
+      const handoffAge = latestHandoff?.created_at
+        ? Date.now() - new Date(latestHandoff.created_at).getTime()
+        : 0;
+      const isAutoExpired = handoffAge > HANDOFF_EXPIRY_MS;
+
+      if (isCompleted || isAutoExpired) {
+        if (isAutoExpired && !isCompleted) {
+          console.log(
+            `${tag} ⏰ Handoff auto-expired (${Math.round(handoffAge / 3_600_000)}h) — new conversation for ${phone}`
+          );
+        }
         const newConv = await createWorkspaceConversation(workspace.id, patient.id);
         if (!newConv) {
           console.error(`${tag} Failed to create new conversation after handoff`);
           return;
         }
         conversation = newConv;
-        console.log(`${tag} ↺ Handoff completed — new conversation for ${phone}`);
+        if (isCompleted) {
+          console.log(`${tag} ↺ Handoff completed — new conversation for ${phone}`);
+        }
       } else {
-        // handoff لا يزال pending/in_progress → تجاهل
+        // handoff لا يزال نشط ولم ينتهِ → تجاهل
         console.log(`${tag} Conversation in handoff — ignoring message from ${phone}`);
         return;
       }
@@ -260,7 +276,8 @@ export async function handleIncomingMessage(
     await processWithAI(
       { workspaceConfig, patient, conversation, isSimulator },
       message,
-      quotedMessageId
+      quotedMessageId,
+      incomingMessageCount
     );
   } catch (error) {
     console.error("[BotEngine] Unhandled error:", error);
@@ -294,7 +311,8 @@ async function resolveWorkspaceByInstance(
 async function processWithAI(
   context: BotContext,
   userMessage: string,
-  quotedMessageId?: string
+  quotedMessageId?: string,
+  incomingMessageCount: number = 1
 ): Promise<void> {
   const { botSettings } = context.workspaceConfig;
   const tag = `[BotEngine][${context.workspaceConfig.workspace.slug}]`;
@@ -306,6 +324,13 @@ async function processWithAI(
     // │  نضيفها يدوياً مرة واحدة فقط عند إرسالها للـ LLM                   │
     // └─────────────────────────────────────────────────────────────────────┘
     const dbHistory = await getConversationMessages(context.conversation.id);
+
+    // Fix #4: حد التاريخ للـ LLM — آخر 20 رسالة فقط (توفير تكلفة الـ tokens)
+    // الـ runtime context يحوي ملخص البيانات فلا حاجة لكل التاريخ
+    const MAX_HISTORY = 20;
+    const llmHistory = dbHistory.length > MAX_HISTORY
+      ? dbHistory.slice(-MAX_HISTORY)
+      : dbHistory;
 
     // احفظ الرسالة الواردة بعد جلب التاريخ
     await saveMessage({
@@ -334,7 +359,8 @@ async function processWithAI(
     const currentCtx = {
       ...((context.conversation.context as Record<string, unknown>) ?? {}),
     };
-    const messageCount = ((currentCtx.message_count as number) ?? 0) + 1;
+    // Fix #5: عداد حقيقي — يحتسب الرسائل الفعلية في الـ batch (ليس دائماً 1)
+    const messageCount = ((currentCtx.message_count as number) ?? 0) + incomingMessageCount;
     currentCtx.message_count = messageCount;
 
     // كشف مسبق: هل آخر إجراء للبوت كان صمتاً؟ (لكسر silent loops)
@@ -373,8 +399,13 @@ async function processWithAI(
     // ─── Parse structured output ──────────────────────────────────────────────
     const structured = parseStructuredOutput(rawContent, tag);
     if (!structured) {
-      // Fallback: أرسل الـ raw كرسالة عادية بدون استخراج
-      await sendBotMessage(context, rawContent);
+      // Fix #2: لا نُرسل الـ JSON الخام للمستخدم — رسالة اعتذار عامة بدلاً
+      console.warn(`${tag} Parse failed — sending safe fallback apology`);
+      await sendBotMessage(
+        context,
+        "عذراً، حدث خطأ مؤقت. سيتواصل معك أحد منسقينا قريباً. 🙏",
+        quotedMessageId
+      );
       return;
     }
 

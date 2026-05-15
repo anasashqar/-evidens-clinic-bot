@@ -31,10 +31,12 @@ const DEBOUNCE_MS = 2_500;
  * نوع الـ processor — الدالة التي تُستدعى عند انتهاء الـ debounce window
  * @param combinedMessage  - الرسائل مدموجة بـ \n
  * @param quotedMessageId  - messageId آخر رسالة (للـ quoted reply) أو undefined
+ * @param batchSize        - عدد الرسائل الفعلي في الـ batch (للـ message_count الصحيح)
  */
 export type MessageProcessor = (
   combinedMessage: string,
-  quotedMessageId: string | undefined
+  quotedMessageId: string | undefined,
+  batchSize: number
 ) => Promise<void>;
 
 interface PendingBatch {
@@ -125,7 +127,7 @@ function createTimer(
       `[Debouncer] 🚀 Firing batch for ${phone}: ${batch.messages.length} msg(s) → "${combined.slice(0, 100)}${combined.length > 100 ? "…" : ""}"`
     );
 
-    processor(combined, quotedId).catch((err) =>
+    processor(combined, quotedId, batch.messages.length).catch((err) =>
       console.error(`[Debouncer] Processor error for ${phone}:`, err)
     );
   }, DEBOUNCE_MS);
