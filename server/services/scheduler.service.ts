@@ -207,6 +207,12 @@ async function sendAppointmentReminder(
 
 async function checkReEngagement(): Promise<void> {
   try {
+    // ─── Quiet Hours Guard ────────────────────────────────────────────────────
+    // لا نُرسل رسائل متابعة في أوقات النوم
+    if (isQuietHours()) {
+      return; // يتوقف بصمت وينتظر الدورة القادمة (الصباح)
+    }
+
     const silenceCutoff = new Date(
       Date.now() - RE_ENGAGEMENT_SILENCE_HOURS * 60 * 60 * 1000
     );
@@ -279,19 +285,20 @@ async function checkReEngagement(): Promise<void> {
 }
 
 function buildReEngagementMessage(name: string, businessName: string): string {
-  const greeting = name ? `أهلاً ${name}،` : "أهلاً،";
+  const greeting = name ? `أهلاً بك ${name}،` : "أهلاً بك،";
   return [
-    `👋 ${greeting}`,
+    `👋 *${greeting}*`,
     ``,
-    `لاحظنا أنك تواصلت معنا في ${businessName} ولم نتمكن من إكمال محادثتنا.`,
+    `لقد سعدنا بتواصلك مع *${businessName}*.`,
+    `لاحظنا توقف المحادثة قبل أن نتمكن من مساعدتك بالكامل.`,
     ``,
-    `هل لا تزال مهتماً بحجز موعد؟ نحن هنا لمساعدتك! 😊`,
+    `يسعدنا دائماً تقديم أفضل رعاية لأسنانك. هل ترغب في استكمال المحادثة لتحديد موعد يناسبك؟ 🦷✨`,
     ``,
-    `يمكنك الرد بـ:`,
-    `• *نعم* — للمتابعة وحجز موعد`,
-    `• *لا شكراً* — إذا تغيّرت خططك`,
+    `نرجو الرد بـ:`,
+    `✅ *نعم* — وسنقوم بترتيب الموعد فوراً.`,
+    `❌ *لا، شكراً* — في حال تغيرت خططك.`,
     ``,
-    `نتطلع للتواصل معك 🙏`,
+    `بانتظار تواصلك، ونتمنى لك دوام الصحة والعافية! 🙏`,
   ].join("\n");
 }
 
