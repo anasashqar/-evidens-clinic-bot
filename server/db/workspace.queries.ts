@@ -706,14 +706,23 @@ export async function updateAppointmentStatus(
   return updated[0];
 }
 
-/** تحديث بيانات الموعد */
+/** تحديث بيانات الموعد
+ *
+ * إذا تغيّر appointment_date → نُعيد تصفير علامتي التذكير تلقائياً
+ * حتى يُرسل الـ Scheduler التذكيرات للموعد الجديد كما لو كان حجزاً جديداً
+ */
 export async function updateAppointment(
   appointmentId: string,
   data: Partial<Pick<InsertAppointment, "appointment_date" | "status" | "doctor" | "appointment_type" | "notes" | "preferred_period">>
 ) {
+  // إذا تغيّر التاريخ → أعد تصفير التذكيرات حتى تُرسل للموعد الجديد
+  const reminderReset = data.appointment_date
+    ? { reminder_12h_sent: false, reminder_2h_sent: false }
+    : {};
+
   const updated = await db
     .update(appointments)
-    .set({ ...data, updated_at: new Date() })
+    .set({ ...data, ...reminderReset, updated_at: new Date() })
     .where(eq(appointments.id, appointmentId))
     .returning();
   return updated[0];

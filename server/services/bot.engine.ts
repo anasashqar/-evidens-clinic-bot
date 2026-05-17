@@ -50,6 +50,7 @@ import {
   getPatientClosedConversations,
   getUpcomingPatientAppointment,
   updateAppointmentStatus,
+  createAppointment,
   type WorkspaceConfig,
 } from "../db/workspace.queries";
 
@@ -728,6 +729,37 @@ async function performHandoff(
     summary,
     status: "pending",
   });
+
+  // ─── إنشاء موعد تلقائي في لوحة التحكم ────────────────────────────────────
+  // نُنشئ موعداً بتاريخ placeholder (7 أيام) حتى يظهر في الداشبورد فوراً
+  // المنسق يعدّل التاريخ الحقيقي → علامات التذكير تُعاد تلقائياً وتُرسل للموعد الجديد
+  try {
+    const placeholderDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    await createAppointment({
+      workspace_id:     workspace.id,
+      patient_id:       context.patient.id,
+      conversation_id:  context.conversation.id,
+      appointment_date: placeholderDate,
+      status:           "scheduled",
+      appointment_type: (ctx.concern as string) ?? null,
+      preferred_period: (ctx.preferred_period as string) ?? null,
+      // تعطيل التذكيرات للتاريخ placeholder — تُفعّل عند تحديث التاريخ الحقيقي
+      reminder_12h_sent: true,
+      reminder_2h_sent:  true,
+      notes: [
+        `تم الحجز عبر البوت تلقائياً.`,
+        (ctx.preferred_period as string)
+          ? `• الوقت المفضّل: ${ctx.preferred_period as string}`
+          : "",
+        (ctx.is_urgent as boolean) ? `• ⚡ حالة مستعجلة` : "",
+        `⏳ يحتاج تأكيد التاريخ والوقت الدقيق من المنسق`,
+      ].filter(Boolean).join("\n"),
+    });
+    console.log(`[BotEngine][${workspace.slug}] 📅 Draft appointment created for ${context.patient.phone}`);
+  } catch (err) {
+    // لا نوقف المحادثة إذا فشل إنشاء الموعد
+    console.error(`[BotEngine][${workspace.slug}] Failed to create draft appointment:`, err);
+  }
 
   // أشعر المنسق (في الإنتاج فقط)
   if (botSettings.handoff_phone && !context.isSimulator) {
