@@ -664,6 +664,35 @@ export async function getUpcomingWorkspaceAppointments(workspaceId: string) {
     .orderBy(appointments.appointment_date);
 }
 
+/**
+ * أقرب موعد قادم لمريض معين خلال الـ 48 ساعة القادمة
+ * يُستخدم في bot.engine للكشف عن طلبات الإلغاء/التأجيل
+ */
+export async function getUpcomingPatientAppointment(
+  workspaceId: string,
+  patientId: string
+) {
+  const now   = new Date();
+  const in48h = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+
+  const rows = await db
+    .select()
+    .from(appointments)
+    .where(
+      and(
+        eq(appointments.workspace_id, workspaceId),
+        eq(appointments.patient_id,   patientId),
+        eq(appointments.status,        "scheduled"),
+        gte(appointments.appointment_date, now),
+        lte(appointments.appointment_date, in48h)
+      )
+    )
+    .orderBy(appointments.appointment_date)
+    .limit(1);
+
+  return rows[0] ?? null;
+}
+
 /** تحديث حالة الموعد */
 export async function updateAppointmentStatus(
   appointmentId: string,

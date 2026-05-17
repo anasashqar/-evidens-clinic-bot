@@ -31,6 +31,7 @@ import type {
   WorkspaceBotSettings,
   Patient,
   Conversation,
+  Appointment,
 } from "../../drizzle/schema";
 import { sendMessageWithConfig, sendReplyWithConfig, notifyHandoffWithConfig } from "./zapi.service";
 import { invokeLLM } from "../_core/llm";
@@ -47,6 +48,8 @@ import {
   createHandoff,
   getLatestHandoffForConversation,
   getPatientClosedConversations,
+  getUpcomingPatientAppointment,
+  updateAppointmentStatus,
   type WorkspaceConfig,
 } from "../db/workspace.queries";
 
@@ -219,6 +222,17 @@ export async function handleIncomingMessage(
     if (!patient) {
       console.error(`${tag} Failed to get/create patient`);
       return;
+    }
+
+    // ─── Phase 2.5: Appointment Reply Detection ──────────────────────────────
+    // يكشف مبكراً إذا كان المريض يريد إلغاء أو تأجيل موعده (قبل أي منطق آخر)
+    const apptIntent = detectAppointmentIntent(message);
+    if (apptIntent) {
+      const upcomingAppt = await getUpcomingPatientAppointment(workspace.id, patient.id);
+      if (upcomingAppt) {
+        await handleAppointmentReply(workspaceConfig, patient, upcomingAppt, apptIntent, isSimulator);
+        return;
+      }
     }
 
     let conversation = await getActiveWorkspaceConversation(workspace.id, patient.id);
@@ -831,4 +845,141 @@ async function sendBotMessage(
     message_type: "text",
     metadata: { workspace_id: context.workspaceConfig.workspace.id },
   });
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// APPOINTMENT REPLY HANDLING
+// ═════════════════════════════════════════════════════════════════════════════
+
+const CANCEL_KEYWORDS = [
+  "إلغاء", "الغاء", "إلغي", "ألغي", "ملغي",
+  "مو قادر", "مش قادر", "ما بقدر", "مانقدر",
+  "ما رح آجي", "مو رح اجي", "مش رح اجي", "مش راح اجي",
+  "بدي أخير", "بدي اخير", "مش متاح", "مو متاح", "مش حاضر", "مو حاضر",
+];
+
+const RESCHEDULE_KEYWORDS = [
+  "تأجيل", "تاجيل", "أجل", "اجل", "تأجيله", "اجله",
+  "تغيير", "غير الموعد", "بدل الموعد",
+  "موعد ثاني", "وقت ثاني", "يوم ثاني",
+  "وقت آخر", "يوم آخر", "موعد آخر",
+];
+
+/** يكشف نية الإلغاء أو التأجيل من رسالة المريض */
+function detectAppointmentIntent(message: string): "cancel" | "reschedule" | null {
+  const msg = message.trim();
+  if (CANCEL_KEYWORDS.some((k) => msg.includes(k)))     return "cancel";
+  if (RESCHEDULE_KEYWORDS.some((k) => msg.includes(k))) return "reschedule";
+  return null;
+}
+
+/**
+ * يتعامل مع طلب الإلغاء أو التأجيل:
+ * 1. يُحدّث حالة الموعد في DB (cancel) أو يُبقيه (reschedule)
+ * 2. يرسل تأكيداً للمريض
+ * 3. يُشعر المنسق بكارت منسق يحتوي كل التفاصيل
+ */
+async function handleAppointmentReply(
+  workspaceConfig: WorkspaceConfig,
+  patient: Patient,
+  appt: Appointment,
+  intent: "cancel" | "reschedule",
+  isSimulator: boolean
+): Promise<void> {
+  const { workspace, botSettings, zapiConfig } = workspaceConfig;
+  const tag  = `[BotEngine][${workspace.slug}]`;
+  const name = patient.name ?? "";
+  const tz   = "Asia/Gaza";
+
+  const dateStr = new Date(appt.appointment_date).toLocaleDateString("ar-SA", {
+    weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: tz,
+  });
+  const timeStr = new Date(appt.appointment_date).toLocaleTimeString("ar-SA", {
+    hour: "2-digit", minute: "2-digit", hour12: true, timeZone: tz,
+  });
+  const doctorPart = appt.doctor ? ` مع ${appt.doctor}` : "";
+  const waLink     = `https://wa.me/${patient.phone.replace(/\D/g, "")}`;
+
+  if (intent === "cancel") {
+    // ─── 1. تحديث DB ─────────────────────────────────────────────────────────
+    await updateAppointmentStatus(appt.id, "cancelled");
+
+    // ─── 2. رد على المريض ────────────────────────────────────────────────────
+    const patientMsg = [
+      `✅ *تأكيد إلغاء الموعد*`,
+      ``,
+      `أهلاً بك ${name ? name : "عزيزنا"}،`,
+      `تم إلغاء موعدك المحجوز في عيادتنا بناءً على طلبك:`,
+      ``,
+      `📅 التاريخ: ${dateStr}`,
+      `⏰ الوقت: ${timeStr}`,
+      appt.doctor ? `👨‍⚕️ الطبيب: ${appt.doctor}` : "",
+      ``,
+      `نتمنى لك دوام الصحة والعافية، ونسعد باستقبالك متى ما رغبت بحجز موعد جديد. 🦷✨`,
+    ].filter(Boolean).join("\n");
+
+    if (!isSimulator) {
+      await sendMessageWithConfig(patient.phone, patientMsg, zapiConfig)
+        .catch((e) => console.error(`${tag} Failed to send cancellation reply:`, e));
+    }
+
+    // ─── 3. إشعار المنسق ─────────────────────────────────────────────────────
+    if (botSettings.handoff_phone && !isSimulator) {
+      const coordinatorMsg = [
+        `📅 *إلغاء موعد — ${botSettings.business_name}*`,
+        `━━━━━━━━━━━━━━━━━━━━`,
+        `👤 المريض: ${name || "—"}`,
+        `📞 الهاتف: ${patient.phone}`,
+        `🔗 ${waLink}`,
+        `📅 الموعد الملغى: ${dateStr}`,
+        `⏰ الساعة: ${timeStr}`,
+        appt.doctor ? `👨‍⚕️ الطبيب: ${appt.doctor}` : "",
+        ``,
+        `⚠️ يُرجى إعادة جدولة الموعد أو تخصيصه لمريض آخر.`,
+      ].filter(Boolean).join("\n");
+
+      await sendMessageWithConfig(botSettings.handoff_phone, coordinatorMsg, zapiConfig)
+        .catch((e) => console.error(`${tag} Failed to notify coordinator (cancel):`, e));
+    }
+
+    console.log(`${tag} 📅 Appt ${appt.id} cancelled by patient ${patient.phone}`);
+
+  } else {
+    // ─── رد على المريض (تأجيل) ───────────────────────────────────────────────
+    const patientMsg = [
+      `🔄 *طلب تأجيل الموعد*`,
+      ``,
+      `أهلاً بك ${name ? name : "عزيزنا"}،`,
+      `تم استلام طلبك لتأجيل الموعد بنجاح.`,
+      `سيقوم فريقنا بالتواصل معك قريباً لترتيب موعد بديل يتناسب مع وقتك. 😊`,
+      ``,
+      `شكراً لتواصلك وإبلاغنا مسبقاً! 🙏✨`,
+    ].join("\n");
+
+    if (!isSimulator) {
+      await sendMessageWithConfig(patient.phone, patientMsg, zapiConfig)
+        .catch((e) => console.error(`${tag} Failed to send reschedule reply:`, e));
+    }
+
+    // ─── إشعار المنسق (تأجيل) ────────────────────────────────────────────────
+    if (botSettings.handoff_phone && !isSimulator) {
+      const coordinatorMsg = [
+        `🔄 *طلب تأجيل موعد — ${botSettings.business_name}*`,
+        `━━━━━━━━━━━━━━━━━━━━`,
+        `👤 المريض: ${name || "—"}`,
+        `📞 الهاتف: ${patient.phone}`,
+        `🔗 ${waLink}`,
+        `📅 الموعد الحالي: ${dateStr}`,
+        `⏰ الساعة: ${timeStr}`,
+        appt.doctor ? `👨‍⚕️ الطبيب: ${appt.doctor}` : "",
+        ``,
+        `⚠️ المريض يطلب تأجيل الموعد — يُرجى التواصل معه لتحديد موعد بديل.`,
+      ].filter(Boolean).join("\n");
+
+      await sendMessageWithConfig(botSettings.handoff_phone, coordinatorMsg, zapiConfig)
+        .catch((e) => console.error(`${tag} Failed to notify coordinator (reschedule):`, e));
+    }
+
+    console.log(`${tag} 🔄 Reschedule requested for appt ${appt.id} by ${patient.phone}`);
+  }
 }
