@@ -17,7 +17,7 @@
  */
 
 import { db } from "../db/index";
-import { eq, and, lt, gte, lte, isNull, or } from "drizzle-orm";
+import { eq, and, lt, gte, lte, desc } from "drizzle-orm";
 import {
   appointments,
   patients,
@@ -35,7 +35,7 @@ import { sendMessageWithConfig } from "./zapi.service";
 
 const REMINDER_CHECK_INTERVAL_MS  = 60_000;        // كل دقيقة
 const RE_ENGAGEMENT_CHECK_INTERVAL_MS = 30 * 60_000; // كل 30 دقيقة
-const RE_ENGAGEMENT_SILENCE_HOURS = 3;             // ساعات الصمت قبل الإرسال
+const RE_ENGAGEMENT_SILENCE_HOURS = 24;            // 24 ساعة — المعيار الصناعي للقطاع الطبي
 const RE_ENGAGEMENT_MAX_PER_CONV  = 1;             // رسالة واحدة فقط لكل محادثة
 
 // ─── Scheduler Bootstrap ─────────────────────────────────────────────────────
@@ -208,44 +208,39 @@ async function sendAppointmentReminder(
 async function checkReEngagement(): Promise<void> {
   try {
     // ─── Quiet Hours Guard ────────────────────────────────────────────────────
-    // لا نُرسل رسائل متابعة في أوقات النوم
-    if (isQuietHours()) {
-      return; // يتوقف بصمت وينتظر الدورة القادمة (الصباح)
-    }
+    if (isQuietHours()) return;
 
     const silenceCutoff = new Date(
       Date.now() - RE_ENGAGEMENT_SILENCE_HOURS * 60 * 60 * 1000
     );
 
-    // جلب المحادثات النشطة التي آخر رسالة وردت فيها قبل الـ cutoff
-    // ولم تصلها رسالة re-engagement قبل ذلك
+    // جلب جميع المحادثات النشطة
     const activeConvs = await db
-      .select({
-        conv: conversations,
-        patient: patients,
-        lastMsg: messages,
-      })
+      .select({ conv: conversations, patient: patients })
       .from(conversations)
       .innerJoin(patients, eq(conversations.patient_id, patients.id))
-      .innerJoin(messages, eq(messages.conversation_id, conversations.id))
-      .where(
-        and(
-          eq(conversations.status, "active"),
-          lt(messages.created_at, silenceCutoff),
-          eq(messages.direction, "inbound")
-        )
-      );
+      .where(eq(conversations.status, "active"));
 
-    // نجمّع حسب conversation_id ونأخذ آخر رسالة واردة لكل محادثة
-    const convMap = new Map<string, typeof activeConvs[0]>();
-    for (const row of activeConvs) {
-      const existing = convMap.get(row.conv.id);
-      if (!existing || row.lastMsg.created_at > existing.lastMsg.created_at) {
-        convMap.set(row.conv.id, row);
-      }
-    }
+    for (const { conv, patient } of activeConvs) {
+      // ─── الإصلاح الجوهري: نجلب آخر رسالة في المحادثة (أي اتجاه) ────────────────
+      // وليس فقط "أي رسالة واردة قديمة" — هذا يمنع إرسال الرسالة لمريض لا يزال يتحدث
+      const [latestMsg] = await db
+        .select()
+        .from(messages)
+        .where(eq(messages.conversation_id, conv.id))
+        .orderBy(desc(messages.created_at))
+        .limit(1);
 
-    for (const { conv, patient } of Array.from(convMap.values())) {
+      if (!latestMsg) continue;
+
+      // الشرطان الحقيقيان:
+      // 1. آخر رسالة في المحادثة (بغض النظر عن اتجاهها) مضى عليها 24 ساعة
+      // 2. آخر رسالة كانت من المريض (inbound) — يعني البوت رد والمريض صمت
+      if (
+        latestMsg.created_at >= silenceCutoff ||
+        latestMsg.direction !== "inbound"
+      ) continue;
+
       // تحقق: هل أُرسلت رسالة re-engagement لهذه المحادثة من قبل؟
       const alreadySent = await db
         .select()
@@ -255,28 +250,24 @@ async function checkReEngagement(): Promise<void> {
 
       if (alreadySent.length >= RE_ENGAGEMENT_MAX_PER_CONV) continue;
 
-      // جلب إعدادات Z-API
+      // جلب إعدادات المساحة
       const config = await getWorkspaceZapiAndBot(conv.workspace_id);
       if (!config) continue;
 
       const { zapiConfig, botSettings } = config;
-      const name = patient.name ?? "";
+      const name         = patient.name ?? "";
       const businessName = botSettings.business_name;
-
-      const message = buildReEngagementMessage(name, businessName);
-
-      const sent = await sendMessageWithConfig(patient.phone, message, zapiConfig);
+      const message      = buildReEngagementMessage(name, businessName);
+      const sent         = await sendMessageWithConfig(patient.phone, message, zapiConfig);
 
       if (sent) {
-        // سجّل الإرسال
         await db.insert(reEngagementLog).values({
-          workspace_id: conv.workspace_id,
-          patient_id: conv.patient_id,
+          workspace_id:    conv.workspace_id,
+          patient_id:      conv.patient_id,
           conversation_id: conv.id,
-          message_text: message,
+          message_text:    message,
         });
-
-        console.log(`[Scheduler] 💬 Re-engagement sent → ${patient.phone}`);
+        console.log(`[Scheduler] 💬 Re-engagement sent → ${patient.phone} (last msg: ${latestMsg.created_at.toISOString()})`);
       }
     }
   } catch (err) {
