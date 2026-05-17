@@ -565,11 +565,13 @@ function buildRuntimeContext(
 
 /**
  * يجلب ملخص المحادثات السابقة المنتهية للمريض
- * يُستخدم فقط مع المرضى العائدين لمنح البوت ذاكرة سياقية
+ *
+ * الإصلاح: لا نعتمد على is_returning_patient كبوابة وحيدة —
+ * بل نجلب المحادثات السابقة لأي مريض موجود مسبقاً.
+ * إذا وجدنا محادثات سابقة بينما العلم لا يزال false،
+ * نصحّحه تلقائياً في DB وفي الذاكرة.
  */
 async function buildPatientHistorySummary(context: BotContext): Promise<string> {
-  if (!context.patient.is_returning_patient) return "";
-
   try {
     const previousConvs = await getPatientClosedConversations(
       context.workspaceConfig.workspace.id,
@@ -578,6 +580,15 @@ async function buildPatientHistorySummary(context: BotContext): Promise<string> 
     );
 
     if (!previousConvs.length) return "";
+
+    // تصحيح تلقائي: إذا كان المريض عائداً فعلاً لكن العلم لم يُضبط بعد
+    if (!context.patient.is_returning_patient) {
+      await updatePatient(context.patient.id, { is_returning_patient: true });
+      context.patient.is_returning_patient = true;
+      console.log(
+        `[BotEngine] ↺ Auto-marked ${context.patient.phone} as returning patient`
+      );
+    }
 
     const summaryLines = previousConvs.slice(0, 3).map((conv, i) => {
       const ctx = (conv.context as Record<string, unknown>) ?? {};

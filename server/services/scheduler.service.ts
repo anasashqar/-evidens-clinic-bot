@@ -2,11 +2,12 @@
  * ═══════════════════════════════════════════════════════════════════
  *  SCHEDULER SERVICE — Automated Reminders & Re-Engagement
  *
- *  يشغّل ثلاثة jobs دورية:
+ *  يشغّل jobين دوريين:
  *
  *  1. checkAppointmentReminders()  — كل دقيقة
- *     → يُرسل تذكيراً لكل موعد قادم خلال 12 ساعة (مرة واحدة)
- *     → يُرسل تذكيراً لكل موعد قادم خلال 2 ساعة (مرة واحدة)
+ *     → تذكير 24 ساعة: يُرسل قبل الموعد بـ 24 ساعة (مرة واحدة) [المعيار الصناعي]
+ *     → تذكير 2 ساعة:  يُرسل قبل الموعد بـ 2 ساعة (مرة واحدة)
+ *     → كلاهما محمي بـ Quiet Hours: لا إرسال قبل 8 صباحاً أو بعد 9 مساءً
  *
  *  2. checkReEngagement()  — كل 30 دقيقة
  *     → يجد المحادثات التي صمت فيها المستخدم أكثر من 3 ساعات
@@ -77,25 +78,25 @@ async function checkAppointmentReminders(): Promise<void> {
   try {
     const now = new Date();
 
-    // ── تذكير 12 ساعة ────────────────────────────────────────────────────────
-    const window12hStart = new Date(now.getTime() + 11.5 * 60 * 60 * 1000);
-    const window12hEnd   = new Date(now.getTime() + 12.5 * 60 * 60 * 1000);
+    // ── تذكير 24 ساعة (المعيار الصناعي) ───────────────────────────────────────
+    const window24hStart = new Date(now.getTime() + 23.5 * 60 * 60 * 1000);
+    const window24hEnd   = new Date(now.getTime() + 24.5 * 60 * 60 * 1000);
 
-    const due12h = await db
+    const due24h = await db
       .select({ appt: appointments, patient: patients })
       .from(appointments)
       .innerJoin(patients, eq(appointments.patient_id, patients.id))
       .where(
         and(
           eq(appointments.status, "scheduled"),
-          eq(appointments.reminder_12h_sent, false),
-          gte(appointments.appointment_date, window12hStart),
-          lte(appointments.appointment_date, window12hEnd)
+          eq(appointments.reminder_12h_sent, false),   // العمود القديم — يُمثّل الآن 24h
+          gte(appointments.appointment_date, window24hStart),
+          lte(appointments.appointment_date, window24hEnd)
         )
       );
 
-    for (const { appt, patient } of due12h) {
-      await sendAppointmentReminder(appt, patient, "12h");
+    for (const { appt, patient } of due24h) {
+      await sendAppointmentReminder(appt, patient, "24h");
     }
 
     // ── تذكير 2 ساعة ─────────────────────────────────────────────────────────
@@ -126,9 +127,16 @@ async function checkAppointmentReminders(): Promise<void> {
 async function sendAppointmentReminder(
   appt: Appointment,
   patient: { phone: string; name: string | null },
-  type: "12h" | "2h"
+  type: "24h" | "2h"
 ): Promise<void> {
   try {
+    // ─── Quiet Hours Guard ────────────────────────────────────────────────────
+    // لا نُزعج المرضى قبل الساعة 8 صباحاً أو بعد 9 مساءً (توقيت غزة)
+    if (isQuietHours()) {
+      console.log(`[Scheduler] 🌙 Quiet hours — skipping ${type} reminder for ${patient.phone}`);
+      return;
+    }
+
     // جلب إعدادات Z-API و Bot للـ workspace
     const config = await getWorkspaceZapiAndBot(appt.workspace_id);
     if (!config) {
@@ -137,32 +145,39 @@ async function sendAppointmentReminder(
     }
 
     const { zapiConfig, botSettings } = config;
-    const name = patient.name ?? "عزيزنا";
-    const dateStr = formatDateArabic(appt.appointment_date);
-    const timeStr = formatTimeArabic(appt.appointment_date);
-    const doctorPart = appt.doctor ? ` مع ${appt.doctor}` : "";
+    const name        = patient.name ?? "عزيزنا";
+    const dateStr     = formatDateArabic(appt.appointment_date);
+    const timeStr     = formatTimeArabic(appt.appointment_date);
+    const doctorPart  = appt.doctor ? ` مع ${appt.doctor}` : "";
     const businessName = botSettings.business_name;
+    // التسمية الذكية: اليوم / غداً / التاريخ الكامل
+    const whenLabel   = getRelativeDateLabel(appt.appointment_date);
 
     let message: string;
-    if (type === "12h") {
+    if (type === "24h") {
       message = [
-        `🗓️ *تذكير بموعدك — ${businessName}*`,
+        `🌟 *تذكير بموعدك القادم — ${businessName}*`,
         ``,
-        `أهلاً ${name}، نذكّرك بموعدك المحجوز غداً:`,
-        `📅 ${dateStr} الساعة ${timeStr}${doctorPart}`,
-        appt.appointment_type ? `🔧 الخدمة: ${appt.appointment_type}` : "",
+        `أهلاً بك ${name}،`,
+        `نود تذكيرك بموعدك في عيادتنا ${whenLabel}:`,
         ``,
-        `إذا كنت تريد تأجيل الموعد أو إلغاءه، تواصل معنا في أقرب وقت.`,
-        `نتطلع لرؤيتك! 🙏`,
+        `📅 التاريخ: ${dateStr}`,
+        `⏰ الوقت: ${timeStr}`,
+        appt.doctor ? `👨‍⚕️ الطبيب: ${appt.doctor}` : "",
+        appt.appointment_type ? `🦷 الخدمة: ${appt.appointment_type}` : "",
+        ``,
+        `في حال وجود أي ظرف يمنعك من الحضور، نرجو إبلاغنا مسبقاً لإعادة الجدولة.`,
+        `نسعد دائماً بخدمتكم وتوفير أفضل رعاية لأسنانكم. ✨`
       ].filter(Boolean).join("\n");
     } else {
       message = [
-        `⏰ *تذكير أخير — ${businessName}*`,
+        `⏰ *اقترب موعدك! — ${businessName}*`,
         ``,
-        `أهلاً ${name}، موعدك بعد ساعتين تقريباً:`,
-        `🕐 الساعة ${timeStr}${doctorPart}`,
+        `مرحباً ${name}،`,
+        `نحن بانتظارك ${whenLabel} خلال الساعتين القادمتين.`,
+        `موعدك في تمام الساعة ${timeStr}${doctorPart}.`,
         ``,
-        `نتطلع لاستقبالك! 😊`,
+        `رافقتكم السلامة، ونراكم قريباً! 🦷😊`
       ].filter(Boolean).join("\n");
     }
 
@@ -170,10 +185,11 @@ async function sendAppointmentReminder(
 
     if (sent) {
       // حدّث علامة الإرسال في DB
+      // ملاحظة: reminder_12h_sent يُمثّل الآن التذكير الـ 24h (لا نحتاج migration)
       await db
         .update(appointments)
         .set({
-          [type === "12h" ? "reminder_12h_sent" : "reminder_2h_sent"]: true,
+          [type === "24h" ? "reminder_12h_sent" : "reminder_2h_sent"]: true,
           updated_at: new Date(),
         })
         .where(eq(appointments.id, appt.id));
@@ -280,6 +296,44 @@ function buildReEngagementMessage(name: string, businessName: string): string {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Quiet Hours — لا نرسل أي تذكير قبل 8 صباحاً أو بعد 9 مساءً (توقيت غزة)
+ * يمنع إزعاج المرضى في أوقات غير مناسبة
+ */
+function isQuietHours(): boolean {
+  const hour = Number(
+    new Date().toLocaleString("en-US", {
+      hour: "numeric",
+      hour12: false,
+      timeZone: "Asia/Gaza",
+    })
+  );
+  // ساعة العمل: 8 صباحاً (8) ← → 9 مساءً (21)
+  return hour < 8 || hour >= 21;
+}
+
+/**
+ * يحسب التسمية الزمنية النسبية لموعد ما:
+ *   "اليوم"  — إذا كان الموعد في نفس اليوم الميلادي (غزة)
+ *   "غداً"   — إذا كان الموعد غداً
+ *   التاريخ الكامل — لأي يوم آخر
+ *
+ * يحل مشكلة الرسائل التي تقول "غداً" بشكل خاطئ.
+ */
+function getRelativeDateLabel(appointmentDate: Date): string {
+  const tz = "Asia/Gaza";
+  const fmt = (d: Date) =>
+    d.toLocaleDateString("en-CA", { timeZone: tz }); // YYYY-MM-DD
+
+  const apptDay     = fmt(appointmentDate);
+  const todayDay    = fmt(new Date());
+  const tomorrowDay = fmt(new Date(Date.now() + 24 * 60 * 60 * 1000));
+
+  if (apptDay === todayDay)    return "اليوم";
+  if (apptDay === tomorrowDay) return "غداً";
+  return formatDateArabic(appointmentDate); // التاريخ الكامل
+}
 
 async function getWorkspaceZapiAndBot(workspaceId: string) {
   try {
