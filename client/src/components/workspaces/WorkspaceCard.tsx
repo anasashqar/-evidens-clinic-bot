@@ -96,7 +96,7 @@ export function WorkspaceCard({ row, onRefresh, typeInfo }: { row: any; onRefres
               <AlertCircle className="h-3 w-3 shrink-0" />
             )}
             <span className="truncate font-medium">
-              {zapiConfig ? zapiConfig.instance_id?.slice(0, 10) + "…" : "غير مربوط"}
+              {zapiConfig ? zapiConfig.instance_id?.slice(0, 10) + "…" : "غير متصل بالرقم"}
             </span>
           </div>
           <div
@@ -112,7 +112,7 @@ export function WorkspaceCard({ row, onRefresh, typeInfo }: { row: any; onRefres
               <AlertCircle className="h-3 w-3 shrink-0" />
             )}
             <span className="font-medium">
-              {isConfigured ? "البوت مُعدَّ" : botSettings ? "يحتاج prompt" : "غير مُعدَّ"}
+              {isConfigured ? "جاهز للعمل" : botSettings ? "يحتاج توجيهات" : "يحتاج إعداد"}
             </span>
           </div>
         </div>

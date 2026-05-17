@@ -149,19 +149,19 @@ export default function Simulator() {
     <PageTransition className="space-y-6" dir="rtl">
       {/* Page Header */}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">محاكي المحادثات</h1>
+        <h1 className="text-2xl font-bold tracking-tight">تجربة البوت</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
-          اختبر البوت بدون الحاجة لـ WhatsApp حقيقي
+          اختبر تفاعل البوت وكأنه على WhatsApp حقيقي
         </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* لوحة التحكم */}
         <div className="space-y-4">
-          <Card>
+          <Card className="border-0 shadow-sm ring-1 ring-border">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm">إعداد المحاكاة</CardTitle>
-              <CardDescription>حدد رقم الهاتف وابدأ</CardDescription>
+              <CardTitle className="text-sm">إعداد التجربة</CardTitle>
+              <CardDescription>حدد رقم الهاتف للبدء</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <div>
@@ -198,7 +198,7 @@ export default function Simulator() {
               {!isSimulating ? (
                 <Button onClick={startNewSimulation} className="w-full">
                   <MessageSquare className="h-4 w-4 ml-2" />
-                  بدء محادثة جديدة
+                  بدء محادثة تجريبية
                 </Button>
               ) : (
                 <Button
@@ -209,14 +209,14 @@ export default function Simulator() {
                   }}
                   className="w-full"
                 >
-                  إنهاء المحاكاة
+                  إنهاء التجربة
                 </Button>
               )}
             </CardContent>
           </Card>
 
           {/* اختصارات */}
-          <Card>
+          <Card className="border-0 shadow-sm ring-1 ring-border">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm flex items-center gap-2">
                 <Zap className="h-4 w-4 text-primary" />
@@ -242,7 +242,7 @@ export default function Simulator() {
         </div>
 
         {/* منطقة الدردشة */}
-        <Card className="lg:col-span-2 flex flex-col overflow-hidden" style={{ height: "600px" }}>
+        <Card className="lg:col-span-2 flex flex-col overflow-hidden border-0 shadow-md ring-1 ring-border" style={{ height: "600px" }}>
           {/* هيدر الدردشة */}
           <CardHeader className="border-b pb-3 shrink-0">
             <div className="flex items-center justify-between">
@@ -252,10 +252,10 @@ export default function Simulator() {
                 </div>
                 <div>
                   <CardTitle className="text-sm">
-                    {isSimulating ? formatPhone(phoneNumber) : "المحاكي"}
+                    {isSimulating ? formatPhone(phoneNumber) : "التجربة"}
                   </CardTitle>
                   <CardDescription className="text-xs">
-                    {isSimulating ? "محادثة جارية" : "ابدأ محادثة للتجربة"}
+                    {isSimulating ? "محادثة جارية" : "ابدأ محادثة لاختبار البوت"}
                   </CardDescription>
                 </div>
               </div>

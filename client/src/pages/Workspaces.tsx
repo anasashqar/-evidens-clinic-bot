@@ -22,6 +22,7 @@ import {
   Bot,
   Activity,
   Loader2,
+  CheckCircle2,
 } from "lucide-react";
 import { CreateWorkspaceModal } from "../components/workspaces/CreateWorkspaceModal";
 import { WorkspaceCard } from "../components/workspaces/WorkspaceCard";
@@ -42,55 +43,6 @@ const BUSINESS_TYPES: Record<
   real_estate: { label: "عقارات",  Icon: Home,            color: "text-green-600",  bg: "bg-green-50" },
   other:       { label: "أخرى",    Icon: Briefcase,       color: "text-gray-600",   bg: "bg-gray-50" },
 };
-
-// ─── Stats Bar ─────────────────────────────────────────────────────────────────
-
-function StatsBar({ workspaces }: { workspaces: any[] }) {
-  const total = workspaces.length;
-  const active = workspaces.filter((w) => w.workspace.is_active).length;
-  const configured = workspaces.filter(
-    (w) =>
-      w.zapiConfig &&
-      w.botSettings?.system_prompt &&
-      !w.botSettings.system_prompt.startsWith("⚠️")
-  ).length;
-  const needsSetup = total - configured;
-
-  const stats = [
-    { label: "إجمالي العملاء", value: total, Icon: Users, color: "text-blue-600 bg-blue-50" },
-    { label: "نشط الآن",       value: active, Icon: Activity, color: "text-green-600 bg-green-50" },
-    { label: "مُعدَّ بالكامل",  value: configured, Icon: Bot,  color: "text-purple-600 bg-purple-50" },
-    { label: "يحتاج إعداد",    value: needsSetup, Icon: AlertCircle, color: "text-amber-600 bg-amber-50" },
-  ];
-
-  return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-      {stats.map(({ label, value, Icon, color }, idx) => {
-        const [textColor, bgColor] = color.split(" ");
-        return (
-          <motion.div
-            key={label}
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: idx * 0.05 }}
-          >
-            <Card className="transition-all hover:shadow-sm">
-              <CardContent className="pt-4 pb-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-medium text-muted-foreground">{label}</p>
-                  <div className={`h-8 w-8 rounded-xl ${bgColor} flex items-center justify-center`}>
-                    <Icon className={`h-4 w-4 ${textColor}`} />
-                  </div>
-                </div>
-                <p className={`text-2xl font-bold mt-2 tracking-tight ${textColor}`}>{value}</p>
-              </CardContent>
-            </Card>
-          </motion.div>
-        );
-      })}
-    </div>
-  );
-}
 
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 
@@ -114,29 +66,26 @@ export default function WorkspacesPage() {
   return (
     <PageTransition className="space-y-6" dir="rtl">
       {/* Page Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b pb-6">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">إدارة العملاء</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            {data?.length ?? 0} عميل مسجل في المنصة
+          <h1 className="text-3xl font-extrabold tracking-tight text-foreground">الأنظمة الآلية (Bots)</h1>
+          <p className="text-base text-muted-foreground mt-1">
+            إدارة وتكوين الأنظمة الآلية للعملاء بطريقة احترافية وفعالة.
           </p>
         </div>
-        <Button onClick={() => setShowCreate(true)} className="gap-1.5">
-          <Plus className="h-4 w-4" />
-          إضافة عميل
+        <Button onClick={() => setShowCreate(true)} size="lg" className="gap-2 font-semibold shadow-sm">
+          <Plus className="h-5 w-5" />
+          تهيئة نظام جديد
         </Button>
       </div>
 
-      {/* Stats */}
-      {data && <StatsBar workspaces={data} />}
-
       {/* Filters */}
-      <div className="flex flex-wrap gap-2">
-        <div className="relative">
+      <div className="flex flex-wrap items-center gap-3 bg-muted/20 p-4 rounded-xl border">
+        <div className="relative flex-grow max-w-md">
           <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            className="pr-9 w-56"
-            placeholder="ابحث بالاسم أو الـ slug..."
+            className="pr-10 h-10 w-full bg-background border-muted shadow-sm"
+            placeholder="البحث باسم العميل أو المعرف..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -167,14 +116,14 @@ export default function WorkspacesPage() {
         <PageSkeleton />
       ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed py-20 text-center text-muted-foreground">
-          <Building2 className="h-12 w-12 opacity-20" />
+          <Bot className="h-12 w-12 opacity-20" />
           <div>
-            <p className="font-medium">لا يوجد عملاء</p>
-            <p className="text-sm mt-1">ابدأ بإضافة عميلك الأول</p>
+            <p className="font-medium">لا يوجد بوتات مسجلة</p>
+            <p className="text-sm mt-1">ابدأ بإضافة البوت الأول الخاص بك</p>
           </div>
           <Button onClick={() => setShowCreate(true)} variant="outline">
             <Plus className="h-4 w-4 ml-1.5" />
-            إضافة عميل
+            إضافة بوت
           </Button>
         </div>
       ) : (
@@ -229,10 +178,10 @@ function FilterButton({
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
+      className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-all ${
         active
-          ? "bg-foreground text-background shadow-sm"
-          : "bg-background border border-border text-muted-foreground hover:text-foreground hover:bg-muted"
+          ? "bg-primary text-primary-foreground shadow-md ring-1 ring-primary/20"
+          : "bg-background border text-muted-foreground hover:text-foreground hover:bg-accent hover:border-accent-foreground/20"
       }`}
     >
       {icon}

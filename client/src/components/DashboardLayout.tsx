@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/sidebar";
 import { APP_LOGO, APP_TITLE, getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, Bot, Building2, LogOut, PanelLeft, ChevronLeft } from "lucide-react";
+import { LayoutDashboard, Bot, Building2, LogOut, PanelLeft, ChevronLeft, Activity } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
@@ -30,8 +30,8 @@ import { Button } from "./ui/button";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "لوحة التحكم",   path: "/" },
-  { icon: Bot,             label: "المحاكي",         path: "/simulator" },
-  { icon: Building2,       label: "العملاء",         path: "/workspaces" },
+  { icon: Bot,             label: "البوتات",         path: "/workspaces" },
+  { icon: Activity,        label: "التجربة والاختبار", path: "/simulator" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";

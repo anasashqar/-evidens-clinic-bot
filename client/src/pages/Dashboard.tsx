@@ -203,30 +203,61 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Metrics */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5 xl:grid-cols-5">
-        {[
-          { label: "إجمالي المحادثات", value: metrics?.totalConversations, icon: MessageSquare },
-          { label: "محادثات اليوم", value: metrics?.todayConversations, icon: Activity, desc: "بدأت اليوم" },
-          { label: "Handoffs بانتظار", value: metrics?.pendingHandoffs, icon: Clock },
-          { label: "Handoffs اليوم", value: metrics?.todayHandoffs, icon: CheckCircle2, desc: "طلبات اليوم" },
-          { label: "إجمالي العملاء", value: metrics?.totalPatients, icon: Users },
-        ].map((item, idx) => (
-          <motion.div
-            key={item.label}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: idx * 0.05 }}
-          >
+      {/* Metrics - Bento Grid Style (Action Oriented) */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        {/* Urgent Action Card */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="md:col-span-1 h-full"
+        >
+          <Card className={`h-full relative overflow-hidden transition-all duration-500 border-0 shadow-sm ring-1 ring-border ${metrics?.pendingHandoffs ? 'bg-gradient-to-br from-orange-500 to-orange-600 text-white ring-orange-500/50 shadow-orange-500/20' : 'bg-card'}`}>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className={`text-sm font-medium ${metrics?.pendingHandoffs ? 'text-white/90' : 'text-muted-foreground'}`}>
+                  تدخل بشري مطلوب
+                </CardTitle>
+                <div className={`h-10 w-10 rounded-full flex items-center justify-center ${metrics?.pendingHandoffs ? 'bg-white/20' : 'bg-orange-100 dark:bg-orange-900/30'}`}>
+                  <Clock className={`h-5 w-5 ${metrics?.pendingHandoffs ? 'text-white' : 'text-orange-600 dark:text-orange-400'}`} />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-4xl font-bold tracking-tight mt-2">
+                {metricsLoading ? (
+                  <div className="h-10 w-16 bg-black/10 dark:bg-white/10 animate-pulse rounded-md" />
+                ) : (
+                  metrics?.pendingHandoffs ?? 0
+                )}
+              </div>
+              <p className={`text-sm mt-2 ${metrics?.pendingHandoffs ? 'text-white/80' : 'text-muted-foreground'}`}>
+                {metrics?.pendingHandoffs ? "حالات تنتظر الرد الفوري" : "لا يوجد حالات معلقة حالياً"}
+              </p>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* Contextual Stats */}
+        <div className="md:col-span-2 grid grid-cols-2 gap-4">
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="h-full">
             <MetricCard
-              label={item.label}
-              value={item.value}
-              icon={item.icon}
-              description={item.desc}
+              label="تحويلات اليوم"
+              value={metrics?.todayHandoffs}
+              icon={CheckCircle2}
+              description="المحادثات التي تطلبت تدخلاً"
               loading={metricsLoading}
             />
           </motion.div>
-        ))}
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="h-full">
+            <MetricCard
+              label="نشاط البوت اليوم"
+              value={metrics?.todayConversations}
+              icon={Activity}
+              description="محادثة جديدة بدأها البوت"
+              loading={metricsLoading}
+            />
+          </motion.div>
+        </div>
       </div>
 
       {/* Tabs */}

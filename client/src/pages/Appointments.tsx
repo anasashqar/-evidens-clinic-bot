@@ -299,7 +299,7 @@ function AppointmentCard({
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.96 }}
-      className="group bg-card border border-border rounded-xl p-4 hover:shadow-md transition-all duration-200 hover:border-primary/20"
+      className="group bg-card border-0 shadow-sm ring-1 ring-border rounded-xl p-4 hover:shadow-md transition-all duration-200 hover:ring-primary/20"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
@@ -422,7 +422,7 @@ function StatsCards({ workspaceId }: { workspaceId: string }) {
       {cards.map((c) => {
         const Icon = c.icon;
         return (
-          <div key={c.label} className="bg-card border border-border rounded-xl p-4 flex items-center gap-3">
+          <div key={c.label} className="bg-card border-0 shadow-sm ring-1 ring-border rounded-xl p-4 flex items-center gap-3">
             <div className={`h-10 w-10 rounded-lg ${c.bg} flex items-center justify-center shrink-0`}>
               <Icon className={`h-5 w-5 ${c.color}`} />
             </div>
@@ -479,7 +479,7 @@ export default function Appointments() {
     return (
       <div className="flex flex-col items-center justify-center h-60 text-muted-foreground gap-2">
         <Calendar className="h-10 w-10 opacity-30" />
-        <p>يرجى تحديد workspace من قائمة العملاء</p>
+        <p>يرجى تحديد البوت من قائمة البوتات</p>
       </div>
     );
   }

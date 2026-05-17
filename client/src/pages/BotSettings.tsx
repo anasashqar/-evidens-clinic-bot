@@ -1,5 +1,5 @@
 /**
- * BotSettings.tsx — إعدادات الـ Workspace
+ * BotSettings.tsx — إعدادات البوت
  * ملاحظة: داخل DashboardLayout — لا min-h-screen هنا
  */
 
@@ -293,7 +293,7 @@ function PromptTab({
   return (
     <div className="space-y-5" dir="rtl">
       <div>
-        <h2 className="text-base font-semibold">محرر شخصية البوت</h2>
+        <h2 className="text-base font-semibold">توجيهات البوت (Prompt)</h2>
         <p className="text-sm text-muted-foreground mt-1">
           الـ System Prompt يُحدد كيف يتصرف البوت مع الزبائن. يمكن تعديله في أي وقت.
         </p>
@@ -313,7 +313,7 @@ function PromptTab({
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <Label>
-            System Prompt <span className="text-destructive">*</span>
+            تعليمات النظام (System Prompt) <span className="text-destructive">*</span>
           </Label>
           <Button variant="outline" size="sm" onClick={loadTemplate} className="h-7 text-xs">
             تحميل قالب {typeLabel}
@@ -443,7 +443,7 @@ function HandoffTab({
   return (
     <div className="space-y-5" dir="rtl">
       <div>
-        <h2 className="text-base font-semibold">إعدادات التحويل</h2>
+        <h2 className="text-base font-semibold">إعدادات الموظف البشري</h2>
         <p className="text-sm text-muted-foreground mt-1">
           عند اكتمال المحادثة، يُحوِّل البوت الزبون لموظف بشري على هذا الرقم.
         </p>
@@ -720,7 +720,7 @@ function SimulatorTab({ workspaceId }: { workspaceId: string }) {
           <MessageSquare className="h-4 w-4" />
         </div>
         <div>
-          <p className="text-sm font-medium">محاكي المحادثة</p>
+          <p className="text-sm font-medium">تجربة البوت</p>
           <p className="text-xs text-muted-foreground">{phone}</p>
         </div>
         <Badge variant="outline" className="mr-auto text-xs text-green-600 border-green-200 bg-green-50 gap-1">
@@ -853,19 +853,19 @@ export default function BotSettings() {
     },
     {
       id: "prompt",
-      label: "الشخصية",
+      label: "توجيهات (Prompt)",
       icon: Bot,
       done: !!(botSettings?.system_prompt && !botSettings.system_prompt.startsWith("⚠️")),
     },
     {
       id: "handoff",
-      label: "التحويل",
+      label: "الموظف البشري",
       icon: ArrowRightLeft,
       done: !!botSettings?.handoff_phone,
     },
     {
       id: "simulator",
-      label: "المحاكي",
+      label: "التجربة",
       icon: MessageSquare,
       done: true,
     },
@@ -882,7 +882,7 @@ export default function BotSettings() {
           className="gap-1.5"
         >
           <ChevronRight className="h-4 w-4" />
-          العملاء
+          البوتات
         </Button>
         <span className="text-muted-foreground">/</span>
         <div>
@@ -929,7 +929,7 @@ export default function BotSettings() {
           ))}
         </TabsList>
 
-        <div className="mt-4 rounded-xl border bg-card p-6 overflow-hidden">
+        <div className="mt-4 rounded-xl border-0 shadow-sm ring-1 ring-border bg-card p-6 overflow-hidden">
           <TabsContent value="zapi" className="mt-0">
             <ZApiTab workspaceId={workspace.id} initial={zapiConfig ?? undefined} />
           </TabsContent>
