@@ -708,6 +708,11 @@ async function performHandoff(
   // context.conversation.context محدَّث في الذاكرة (تم في processWithAI)
   const ctx = (context.conversation.context as Record<string, unknown>) ?? {};
 
+  const labels = getWorkspaceLabels(workspace.business_type, {
+    client_label: botSettings.client_label,
+    staff_label:  botSettings.staff_label,
+  });
+
   // أرسل رسالة التحويل للمستخدم
   await sendBotMessage(context, lastBotMessage, quotedMessageId);
 
@@ -719,7 +724,13 @@ async function performHandoff(
   });
 
   // بناء ملخص الـ handoff من الـ context المحدَّث
-  const summary = buildHandoffSummary(ctx, context.patient, botSettings, context.conversation.started_at);
+  const summary = buildHandoffSummary(
+    ctx, 
+    context.patient, 
+    botSettings, 
+    context.conversation.started_at,
+    labels.clientLabel
+  );
 
   // احفظ سجل الـ handoff
   await createHandoff({
@@ -790,7 +801,8 @@ function buildHandoffSummary(
   ctx: Record<string, unknown>,
   patient: Patient,
   botSettings: WorkspaceBotSettings,
-  conversationStartedAt: Date
+  conversationStartedAt: Date,
+  clientLabel: string
 ): string {
   // ─── حساب وقت الاستجابة ─────────────────────────────────────────────────────
   const elapsedMs = Date.now() - new Date(conversationStartedAt).getTime();
@@ -809,7 +821,7 @@ function buildHandoffSummary(
   // رقم الهاتف المستخرج: المذكور في الحوار أولاً، ثم رقم الواتساب
   const contactPhone = (ctx.extracted_phone as string) ?? patient.phone;
   const contactLink  = `https://wa.me/${contactPhone.replace(/\D/g, "")}`;
-  const emergencyTag = (ctx.is_emergency as boolean) ? "\n\ud83d\udea8 *حالة طوارئ — يحتاج رداً فوريًا*" : "";
+  const emergencyTag = (ctx.is_emergency as boolean) ? "\n🚨 *حالة طوارئ — يحتاج رداً فوريًا*" : "";
 
   // ─── القالب المخصص ──────────────────────────────────────────────────────────
   if (botSettings.handoff_message_template) {
@@ -828,7 +840,7 @@ function buildHandoffSummary(
 
   // ─── القالب الافتراضي ───────────────────────────────────────────────────────
   return [
-    `🔔 *عميل جاهز — ${bizName}*${emergencyTag}`,
+    `🔔 *${clientLabel} جاهز — ${bizName}*${emergencyTag}`,
     `━━━━━━━━━━━━━━━━━━━━`,
     `👤 الاسم: ${name}`,
     `📞 واتساب: ${patient.phone}`,
