@@ -398,6 +398,8 @@ export async function upsertBotSettings(
     handoff_name?: string;
     max_messages_before_handoff?: number;
     is_bot_active?: boolean;
+    client_label?: string | null;
+    staff_label?: string | null;
   }
 ) {
   const existing = await db
@@ -626,7 +628,7 @@ export async function getLatestHandoffForConversation(conversationId: string) {
 
 /** إنشاء موعد جديد */
 export async function createAppointment(
-  data: Omit<InsertAppointment, "id" | "created_at" | "updated_at" | "reminder_12h_sent" | "reminder_2h_sent">
+  data: Omit<InsertAppointment, "id" | "created_at" | "updated_at">
 ) {
   const created = await db.insert(appointments).values(data).returning();
   return created[0];

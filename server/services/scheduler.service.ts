@@ -30,12 +30,13 @@ import {
   type Appointment,
 } from "../../drizzle/schema";
 import { sendMessageWithConfig } from "./zapi.service";
+import { getWorkspaceLabels } from "../../shared/business-labels";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const REMINDER_CHECK_INTERVAL_MS  = 60_000;        // كل دقيقة
 const RE_ENGAGEMENT_CHECK_INTERVAL_MS = 30 * 60_000; // كل 30 دقيقة
-const RE_ENGAGEMENT_SILENCE_HOURS = 24;            // 24 ساعة — المعيار الصناعي للقطاع الطبي
+const RE_ENGAGEMENT_SILENCE_HOURS = 24;            // 24 ساعة — المعيار الصناعي
 const RE_ENGAGEMENT_MAX_PER_CONV  = 1;             // رسالة واحدة فقط لكل محادثة
 
 // ─── Scheduler Bootstrap ─────────────────────────────────────────────────────
@@ -131,27 +132,30 @@ async function sendAppointmentReminder(
 ): Promise<void> {
   try {
     // ─── Quiet Hours Guard ────────────────────────────────────────────────────
-    // لا نُزعج المرضى قبل الساعة 8 صباحاً أو بعد 9 مساءً (توقيت غزة)
     if (isQuietHours()) {
       console.log(`[Scheduler] 🌙 Quiet hours — skipping ${type} reminder for ${patient.phone}`);
       return;
     }
 
-    // جلب إعدادات Z-API و Bot للـ workspace
+    // جلب إعدادات Z-API و Bot و نوع النشاط للـ workspace
     const config = await getWorkspaceZapiAndBot(appt.workspace_id);
     if (!config) {
       console.warn(`[Scheduler] No Z-API config for workspace ${appt.workspace_id}`);
       return;
     }
 
-    const { zapiConfig, botSettings } = config;
-    const name        = patient.name ?? "عزيزنا";
-    const dateStr     = formatDateArabic(appt.appointment_date);
-    const timeStr     = formatTimeArabic(appt.appointment_date);
-    const doctorPart  = appt.doctor ? ` مع ${appt.doctor}` : "";
+    const { zapiConfig, botSettings, businessType } = config;
+    const labels = getWorkspaceLabels(businessType, {
+      client_label: botSettings.client_label,
+      staff_label:  botSettings.staff_label,
+    });
+
+    const name         = patient.name ?? "عزيزنا";
+    const dateStr      = formatDateArabic(appt.appointment_date);
+    const timeStr      = formatTimeArabic(appt.appointment_date);
+    const doctorPart   = appt.doctor ? ` مع ${appt.doctor}` : "";
     const businessName = botSettings.business_name;
-    // التسمية الذكية: اليوم / غداً / التاريخ الكامل
-    const whenLabel   = getRelativeDateLabel(appt.appointment_date);
+    const whenLabel    = getRelativeDateLabel(appt.appointment_date);
 
     let message: string;
     if (type === "24h") {
@@ -159,15 +163,15 @@ async function sendAppointmentReminder(
         `🌟 *تذكير بموعدك القادم — ${businessName}*`,
         ``,
         `أهلاً بك ${name}،`,
-        `نود تذكيرك بموعدك في عيادتنا ${whenLabel}:`,
+        `نود تذكيرك بموعدك لدى ${businessName} ${whenLabel}:`,
         ``,
         `📅 التاريخ: ${dateStr}`,
         `⏰ الوقت: ${timeStr}`,
-        appt.doctor ? `👨‍⚕️ الطبيب: ${appt.doctor}` : "",
-        appt.appointment_type ? `🦷 الخدمة: ${appt.appointment_type}` : "",
+        appt.doctor ? `${labels.staffEmoji} ${labels.staffLabel}: ${appt.doctor}` : "",
+        appt.appointment_type ? `${labels.brandEmoji} الخدمة: ${appt.appointment_type}` : "",
         ``,
         `في حال وجود أي ظرف يمنعك من الحضور، نرجو إبلاغنا مسبقاً لإعادة الجدولة.`,
-        `نسعد دائماً بخدمتكم وتوفير أفضل رعاية لأسنانكم. ✨`
+        `نسعد دائماً بخدمتكم. ✨`
       ].filter(Boolean).join("\n");
     } else {
       message = [
@@ -177,15 +181,13 @@ async function sendAppointmentReminder(
         `نحن بانتظارك ${whenLabel} خلال الساعتين القادمتين.`,
         `موعدك في تمام الساعة ${timeStr}${doctorPart}.`,
         ``,
-        `رافقتكم السلامة، ونراكم قريباً! 🦷😊`
+        `رافقتكم السلامة، ونراكم قريباً! 😊`
       ].filter(Boolean).join("\n");
     }
 
     const sent = await sendMessageWithConfig(patient.phone, message, zapiConfig);
 
     if (sent) {
-      // حدّث علامة الإرسال في DB
-      // ملاحظة: reminder_12h_sent يُمثّل الآن التذكير الـ 24h (لا نحتاج migration)
       await db
         .update(appointments)
         .set({
@@ -254,10 +256,14 @@ async function checkReEngagement(): Promise<void> {
       const config = await getWorkspaceZapiAndBot(conv.workspace_id);
       if (!config) continue;
 
-      const { zapiConfig, botSettings } = config;
+      const { zapiConfig, botSettings, businessType } = config;
+      const labels       = getWorkspaceLabels(businessType, {
+        client_label: botSettings.client_label,
+        staff_label:  botSettings.staff_label,
+      });
       const name         = patient.name ?? "";
       const businessName = botSettings.business_name;
-      const message      = buildReEngagementMessage(name, businessName);
+      const message      = buildReEngagementMessage(name, businessName, labels.brandEmoji);
       const sent         = await sendMessageWithConfig(patient.phone, message, zapiConfig);
 
       if (sent) {
@@ -275,7 +281,7 @@ async function checkReEngagement(): Promise<void> {
   }
 }
 
-function buildReEngagementMessage(name: string, businessName: string): string {
+function buildReEngagementMessage(name: string, businessName: string, emoji: string): string {
   const greeting = name ? `أهلاً بك ${name}،` : "أهلاً بك،";
   return [
     `👋 *${greeting}*`,
@@ -283,13 +289,13 @@ function buildReEngagementMessage(name: string, businessName: string): string {
     `لقد سعدنا بتواصلك مع *${businessName}*.`,
     `لاحظنا توقف المحادثة قبل أن نتمكن من مساعدتك بالكامل.`,
     ``,
-    `يسعدنا دائماً تقديم أفضل رعاية لأسنانك. هل ترغب في استكمال المحادثة لتحديد موعد يناسبك؟ 🦷✨`,
+    `يسعدنا دائماً خدمتك. هل ترغب في استكمال المحادثة لتحديد موعد يناسبك؟ ${emoji}✨`,
     ``,
     `نرجو الرد بـ:`,
     `✅ *نعم* — وسنقوم بترتيب الموعد فوراً.`,
     `❌ *لا، شكراً* — في حال تغيرت خططك.`,
     ``,
-    `بانتظار تواصلك، ونتمنى لك دوام الصحة والعافية! 🙏`,
+    `بانتظار تواصلك! 🙏`,
   ].join("\n");
 }
 
@@ -339,11 +345,16 @@ async function getWorkspaceZapiAndBot(workspaceId: string) {
       .select({
         zapiConfig: workspaceZapiConfig,
         botSettings: workspaceBotSettings,
+        businessType: workspaces.business_type,
       })
       .from(workspaceZapiConfig)
       .innerJoin(
         workspaceBotSettings,
         eq(workspaceBotSettings.workspace_id, workspaceZapiConfig.workspace_id)
+      )
+      .innerJoin(
+        workspaces,
+        eq(workspaces.id, workspaceZapiConfig.workspace_id)
       )
       .where(eq(workspaceZapiConfig.workspace_id, workspaceId))
       .limit(1);

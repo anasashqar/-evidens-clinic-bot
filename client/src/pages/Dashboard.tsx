@@ -106,7 +106,7 @@ export default function Dashboard() {
 
     if (pending > prevPendingCount.current && prevPendingCount.current !== -1) {
       const newest = handoffs?.find((r: any) => r.handoff.status === "pending");
-      const name = newest?.patient?.name || newest?.patient?.phone || "مريض";
+      const name = newest?.patient?.name || newest?.patient?.phone || "عميل";
       setNotification(`طلب جديد من ${name} — يحتاج متابعة`);
 
       try {
@@ -210,7 +210,7 @@ export default function Dashboard() {
           { label: "محادثات اليوم", value: metrics?.todayConversations, icon: Activity, desc: "بدأت اليوم" },
           { label: "Handoffs بانتظار", value: metrics?.pendingHandoffs, icon: Clock },
           { label: "Handoffs اليوم", value: metrics?.todayHandoffs, icon: CheckCircle2, desc: "طلبات اليوم" },
-          { label: "إجمالي المرضى", value: metrics?.totalPatients, icon: Users },
+          { label: "إجمالي العملاء", value: metrics?.totalPatients, icon: Users },
         ].map((item, idx) => (
           <motion.div
             key={item.label}
@@ -283,7 +283,7 @@ export default function Dashboard() {
                     <Table>
                       <TableHeader>
                         <TableRow className="bg-muted/30 border-y hover:bg-muted/30">
-                          <TableHead className="text-right pr-5">المريض</TableHead>
+                          <TableHead className="text-right pr-5">العميل</TableHead>
                           <TableHead className="text-right">الهاتف</TableHead>
                           <TableHead className="text-right">السبب</TableHead>
                           <TableHead className="text-right hidden md:table-cell">الملخص</TableHead>
@@ -358,14 +358,14 @@ export default function Dashboard() {
               <Card className="mt-4 border-0 shadow-sm ring-1 ring-border">
                 <CardHeader className="px-5 pb-3">
                   <CardTitle className="text-base font-semibold">المحادثات الأخيرة</CardTitle>
-                  <CardDescription>سجل تفاعل المرضى مع البوت الآلي</CardDescription>
+                  <CardDescription>سجل تفاعل العملاء مع البوت الآلي</CardDescription>
                 </CardHeader>
                 <CardContent className="px-0">
                   <div className="overflow-hidden">
                     <Table>
                       <TableHeader>
                         <TableRow className="bg-muted/30 border-y hover:bg-muted/30">
-                          <TableHead className="text-right pr-5">المريض</TableHead>
+                          <TableHead className="text-right pr-5">العميل</TableHead>
                           <TableHead className="text-right">الهاتف</TableHead>
                           <TableHead className="text-right">الحالة</TableHead>
                           <TableHead className="text-right hidden sm:table-cell">الخطوة الحالية</TableHead>

@@ -111,6 +111,16 @@ export const workspaceBotSettings = pgTable("workspace_bot_settings", {
    *   {business_name}   اسم البزنس
    * إذا كان null → يُستخدم القالب الافتراضي
    */
+  /**
+   * تسمية العميل/المستخدم — null = القيمة الافتراضية حسب نوع النشاط
+   * مثال: "مريض" للعيادات، "عميل" للصالونات، "زبون" للمطاعم
+   */
+  client_label: varchar("client_label", { length: 100 }),
+  /**
+   * تسمية مقدم الخدمة — null = القيمة الافتراضية حسب نوع النشاط
+   * مثال: "الطبيب" للعيادات، "المختص" للصالونات، "الوكيل" للعقارات
+   */
+  staff_label: varchar("staff_label", { length: 100 }),
   handoff_message_template: text("handoff_message_template"),
   created_at: timestamp("created_at").defaultNow().notNull(),
   updated_at: timestamp("updated_at").defaultNow().notNull(),

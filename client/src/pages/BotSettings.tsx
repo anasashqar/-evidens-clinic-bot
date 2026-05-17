@@ -391,6 +391,8 @@ function HandoffTab({
     max_messages_before_handoff?: number;
     is_bot_active?: boolean;
     handoff_message_template?: string | null;
+    client_label?: string | null;
+    staff_label?: string | null;
   };
 }) {
   const [form, setForm] = useState({
@@ -401,6 +403,8 @@ function HandoffTab({
     max_messages_before_handoff: initial?.max_messages_before_handoff ?? 12,
     is_bot_active: initial?.is_bot_active ?? true,
     handoff_message_template: initial?.handoff_message_template ?? "",
+    client_label: initial?.client_label ?? "",
+    staff_label: initial?.staff_label ?? "",
   });
 
   const utils = trpc.useUtils();
@@ -422,6 +426,8 @@ function HandoffTab({
         max_messages_before_handoff: initial.max_messages_before_handoff ?? 12,
         is_bot_active: initial.is_bot_active ?? true,
         handoff_message_template: initial.handoff_message_template ?? "",
+        client_label: initial.client_label ?? "",
+        staff_label: initial.staff_label ?? "",
       });
     }
   }, [
@@ -534,6 +540,40 @@ function HandoffTab({
       {/* قالب رسالة التحويل المخصص */}
       <Card>
         <CardHeader className="pb-3">
+          <CardTitle className="text-sm">تسميات مخصصة (اختياري)</CardTitle>
+          <CardDescription className="text-xs">
+            يستبدل التسميات الافتراضية حسب نوع البزنس — اتركها فارغةً لاستخدام القيم الذكية تلقائياً.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="client-label">تسمية العميل</Label>
+              <Input
+                id="client-label"
+                placeholder="مريض / عميل / زبون..."
+                value={form.client_label}
+                onChange={(e) => setForm((f) => ({ ...f, client_label: e.target.value }))}
+              />
+              <p className="text-xs text-muted-foreground">افتراضي: حسب نوع البزنس (مريض / عميل / زبون)</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="staff-label">تسمية مقدم الخدمة</Label>
+              <Input
+                id="staff-label"
+                placeholder="الطبيب / المختص / الوكيل..."
+                value={form.staff_label}
+                onChange={(e) => setForm((f) => ({ ...f, staff_label: e.target.value }))}
+              />
+              <p className="text-xs text-muted-foreground">افتراضي: حسب نوع البزنس (الطبيب / المختص / الوكيل)</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* قالب رسالة التحويل المخصص */}
+      <Card>
+        <CardHeader className="pb-3">
           <CardTitle className="text-sm">قالب رسالة المنسق</CardTitle>
           <CardDescription className="text-xs">
             اكتب قالبك باستخدام المتغيرات أدناه. إذا تركته فارغاً يُستخدم القالب الافتراضي.
@@ -591,7 +631,7 @@ function HandoffTab({
                   .replace(/\{name\}/g, "سارة الأحمدي")
                   .replace(/\{phone\}/g, "966501234567")
                   .replace(/\{phone_link\}/g, "wa.me/966501234567")
-                  .replace(/\{concern\}/g, "تنظيف وتبييض")
+                  .replace(/\{concern\}/g, "استشارة أولية")
                   .replace(/\{preferred_period\}/g, "مساء الأسبوع القادم")
                   .replace(/\{is_urgent\}/g, "عادي")
                   .replace(/\{is_returning\}/g, "جديد 🆕")
@@ -617,6 +657,8 @@ function HandoffTab({
             max_messages_before_handoff: form.max_messages_before_handoff,
             is_bot_active: form.is_bot_active,
             handoff_message_template: form.handoff_message_template || null,
+            client_label: form.client_label || null,
+            staff_label: form.staff_label || null,
           })
         }
         disabled={saveMutation.isPending}

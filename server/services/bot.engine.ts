@@ -35,6 +35,7 @@ import type {
 } from "../../drizzle/schema";
 import { sendMessageWithConfig, sendReplyWithConfig, notifyHandoffWithConfig } from "./zapi.service";
 import { invokeLLM } from "../_core/llm";
+import { getWorkspaceLabels } from "../../shared/business-labels";
 import {
   getWorkspaceByInstanceId,
   getWorkspaceConfigById,
@@ -160,7 +161,7 @@ const JSON_FORMAT_INSTRUCTION = `
 - phone: أي رقم هاتف يذكره المستخدم داخل الحوار — احفظه كما هو بدون تنسيق
 - is_returning: true فقط إذا ذكر صراحة أنه زار من قبل
 - is_urgent: true فقط عند إلحاح أو ألم أو طارئ — وإلا false
-- is_emergency: true فقط عند علامات طوارئ واضحة (تورم وجه/رقبة، خراج، نزيف لا يتوقف، كسر، ألم حاد لا يُحتمل)
+- is_emergency: true فقط عند علامات طوارئ أو خطر واضح تتطلب تدخلاً فورياً من الفريق البشري
   → عند is_emergency: true يجب أيضاً: should_handoff: true و handoff_reason: "emergency"
 - should_handoff: true عندما تكتمل المعلومات الأساسية وأنت جاهز للتحويل
 - should_handoff: true أيضاً عند غضب أو شكوى أو حالة حساسة أو طلب غير واضح لكنه مهم — البشر أولاً
@@ -1008,6 +1009,10 @@ async function handleAppointmentReply(
   isSimulator: boolean
 ): Promise<void> {
   const { workspace, botSettings, zapiConfig } = workspaceConfig;
+  const labels = getWorkspaceLabels(workspace.business_type, {
+    client_label: botSettings.client_label,
+    staff_label:  botSettings.staff_label,
+  });
   const tag  = `[BotEngine][${workspace.slug}]`;
   const name = patient.name ?? "";
   const tz   = "Asia/Gaza";
@@ -1030,13 +1035,13 @@ async function handleAppointmentReply(
       `✅ *تأكيد إلغاء الموعد*`,
       ``,
       `أهلاً بك ${name ? name : "عزيزنا"}،`,
-      `تم إلغاء موعدك المحجوز في عيادتنا بناءً على طلبك:`,
+      `تم إلغاء موعدك المحجوز لدى ${botSettings.business_name} بناءً على طلبك:`,
       ``,
       `📅 التاريخ: ${dateStr}`,
       `⏰ الوقت: ${timeStr}`,
-      appt.doctor ? `👨‍⚕️ الطبيب: ${appt.doctor}` : "",
+      appt.doctor ? `${labels.staffEmoji} ${labels.staffLabel}: ${appt.doctor}` : "",
       ``,
-      `نتمنى لك دوام الصحة والعافية، ونسعد باستقبالك متى ما رغبت بحجز موعد جديد. 🦷✨`,
+      `نسعد باستقبالك متى ما رغبت بحجز موعد جديد. ${labels.brandEmoji}✨`,
     ].filter(Boolean).join("\n");
 
     if (!isSimulator) {
@@ -1049,14 +1054,14 @@ async function handleAppointmentReply(
       const coordinatorMsg = [
         `📅 *إلغاء موعد — ${botSettings.business_name}*`,
         `━━━━━━━━━━━━━━━━━━━━`,
-        `👤 المريض: ${name || "—"}`,
+        `👤 ${labels.clientLabel}: ${name || "—"}`,
         `📞 الهاتف: ${patient.phone}`,
         `🔗 ${waLink}`,
         `📅 الموعد الملغى: ${dateStr}`,
         `⏰ الساعة: ${timeStr}`,
-        appt.doctor ? `👨‍⚕️ الطبيب: ${appt.doctor}` : "",
+        appt.doctor ? `${labels.staffEmoji} ${labels.staffLabel}: ${appt.doctor}` : "",
         ``,
-        `⚠️ يُرجى إعادة جدولة الموعد أو تخصيصه لمريض آخر.`,
+        `⚠️ يُرجى إعادة جدولة الموعد أو تخصيصه لعميل آخر.`,
       ].filter(Boolean).join("\n");
 
       await sendMessageWithConfig(botSettings.handoff_phone, coordinatorMsg, zapiConfig)
@@ -1087,14 +1092,14 @@ async function handleAppointmentReply(
       const coordinatorMsg = [
         `🔄 *طلب تأجيل موعد — ${botSettings.business_name}*`,
         `━━━━━━━━━━━━━━━━━━━━`,
-        `👤 المريض: ${name || "—"}`,
+        `👤 ${labels.clientLabel}: ${name || "—"}`,
         `📞 الهاتف: ${patient.phone}`,
         `🔗 ${waLink}`,
         `📅 الموعد الحالي: ${dateStr}`,
         `⏰ الساعة: ${timeStr}`,
-        appt.doctor ? `👨‍⚕️ الطبيب: ${appt.doctor}` : "",
+        appt.doctor ? `${labels.staffEmoji} ${labels.staffLabel}: ${appt.doctor}` : "",
         ``,
-        `⚠️ المريض يطلب تأجيل الموعد — يُرجى التواصل معه لتحديد موعد بديل.`,
+        `⚠️ ${labels.clientLabel} يطلب تأجيل الموعد — يُرجى التواصل معه لتحديد موعد بديل.`,
       ].filter(Boolean).join("\n");
 
       await sendMessageWithConfig(botSettings.handoff_phone, coordinatorMsg, zapiConfig)

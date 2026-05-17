@@ -237,6 +237,10 @@ export const appRouter = router({
           is_bot_active: z.boolean().optional(),
           /** قالب رسالة المنسق — null يعني استخدام القالب الافتراضي */
           handoff_message_template: z.string().nullable().optional(),
+          /** تسمية العميل — null يعني الافتراضي حسب نوع النشاط */
+          client_label: z.string().max(50).nullable().optional(),
+          /** تسمية مقدم الخدمة — null يعني الافتراضي حسب نوع النشاط */
+          staff_label: z.string().max(50).nullable().optional(),
         })
       )
       .mutation(async ({ input }) => {

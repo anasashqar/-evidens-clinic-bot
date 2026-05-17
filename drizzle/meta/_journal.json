@@ -50,6 +50,13 @@
       "when": 1778616346834,
       "tag": "0006_fix_patients_unique",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1779035152927,
+      "tag": "0007_add_label_fields",
+      "breakpoints": true
     }
   ]
 }

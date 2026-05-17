@@ -27,8 +27,8 @@ interface SimulatedMessage {
 
 const QUICK_MESSAGES = [
   { label: "بدء المحادثة", text: "مرحبا" },
-  { label: "مريض جديد", text: "1" },
-  { label: "مريض قديم", text: "2" },
+  { label: "عميل جديد", text: "1" },
+  { label: "عميل عائد", text: "2" },
   { label: "طلب موعد", text: "أريد حجز موعد" },
   { label: "استفسار", text: "ما هي أوقات العمل؟" },
 ];

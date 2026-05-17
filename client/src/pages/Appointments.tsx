@@ -130,7 +130,7 @@ function NewAppointmentDialog({
               <Input placeholder="9725XXXXXXXX" value={form.patientPhone} onChange={f("patientPhone")} dir="ltr" />
             </div>
             <div className="space-y-1.5">
-              <Label>اسم المريض</Label>
+              <Label>اسم العميل</Label>
               <Input placeholder="الاسم الكامل" value={form.patientName} onChange={f("patientName")} />
             </div>
           </div>
@@ -142,12 +142,12 @@ function NewAppointmentDialog({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>الطبيب / المختص</Label>
-              <Input placeholder="اسم الطبيب" value={form.doctor} onChange={f("doctor")} />
+              <Label>المختص</Label>
+              <Input placeholder="اسم المختص" value={form.doctor} onChange={f("doctor")} />
             </div>
             <div className="space-y-1.5">
               <Label>نوع الخدمة</Label>
-              <Input placeholder="فحص، علاج..." value={form.appointmentType} onChange={f("appointmentType")} />
+              <Input placeholder="نوع الخدمة..." value={form.appointmentType} onChange={f("appointmentType")} />
             </div>
           </div>
 
@@ -234,7 +234,7 @@ function EditAppointmentDialog({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>الطبيب</Label>
+              <Label>المختص</Label>
               <Input value={form.doctor} onChange={f("doctor")} />
             </div>
             <div className="space-y-1.5">
@@ -309,7 +309,7 @@ function AppointmentCard({
               <User className="h-4 w-4 text-primary" />
             </div>
             <div className="min-w-0">
-              <p className="font-semibold text-sm truncate">{patient.name ?? "مريض غير محدد"}</p>
+              <p className="font-semibold text-sm truncate">{patient.name ?? "عميل غير محدد"}</p>
               <p className="text-xs text-muted-foreground" dir="ltr">{patient.phone}</p>
             </div>
           </div>
@@ -494,7 +494,7 @@ export default function Appointments() {
         <div className="relative flex-1 min-w-48">
           <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="بحث بالاسم، الهاتف، الطبيب..."
+            placeholder="بحث بالاسم، الهاتف، المختص..."
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="pr-9"
