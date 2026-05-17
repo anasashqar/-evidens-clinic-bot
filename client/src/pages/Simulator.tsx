@@ -38,7 +38,13 @@ export default function Simulator() {
   const [currentMessage, setCurrentMessage] = useState("");
   const [messages, setMessages] = useState<SimulatedMessage[]>([]);
   const [isSimulating, setIsSimulating] = useState(false);
+  // isTyping: يُظهر نبض الكتابة بينما البوت يُعالج الرسالة
+  // مستقل عن isPending — يُصفَّر عندما يصل رد البوت
+  const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const prevOutboundCountRef = useRef(0);
+  // optMsgs: رسائل محلية لم تُؤكَّد من الـ server بعد
+  const optMsgsRef = useRef<SimulatedMessage[]>([]);
 
   const { data: workspaces } = trpc.admin.workspaces.useQuery();
   const currentWorkspaceId = workspaces?.[0]?.workspace?.id || "";
@@ -50,23 +56,39 @@ export default function Simulator() {
     { enabled: isSimulating && !!phoneNumber && !!currentWorkspaceId, refetchInterval: 1000 }
   );
 
+  // كشف رد البوت: إذا زاد عدد الرسائل الصادرة → ألغِ نبض الكتابة
   useEffect(() => {
-    // Don't overwrite optimistic messages while waiting for the bot's reply.
-    // The mutation being pending means we already added the user message locally;
-    // if we let the refetch replace state now it would vanish until the bot responds.
-    if (simulateMessageMutation.isPending) return;
-
-    if (serverMessages && serverMessages.length > 0) {
-      setMessages(
-        serverMessages.map((m: any) => ({
-          id: m.id,
-          direction: m.direction,
-          content: m.content,
-          timestamp: new Date(m.timestamp),
-        }))
-      );
+    if (!serverMessages) return;
+    const outbound = serverMessages.filter((m: any) => m.direction === "outbound").length;
+    if (outbound > prevOutboundCountRef.current) {
+      prevOutboundCountRef.current = outbound;
+      setIsTyping(false);
+      optMsgsRef.current = []; // تم تأكيد كل الرسائل
     }
-  }, [serverMessages, simulateMessageMutation.isPending]);
+  }, [serverMessages]);
+
+  // دمج رسائل الـ server مع الرسائل المحلية غير المؤكدة (الـ optimistic)
+  useEffect(() => {
+    if (!serverMessages?.length) return;
+
+    const serverFormatted: SimulatedMessage[] = serverMessages.map((m: any) => ({
+      id: m.id,
+      direction: m.direction,
+      content: m.content,
+      timestamp: new Date(m.timestamp),
+    }));
+
+    // احتفظ بالرسائل المحلية التي لم تظهر بعد في الـ server
+    const serverContents = new Set(
+      serverFormatted.filter(m => m.direction === "inbound").map(m => m.content)
+    );
+    const unconfirmed = optMsgsRef.current.filter(m => !serverContents.has(m.content));
+
+    const merged = [...serverFormatted, ...unconfirmed]
+      .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+
+    setMessages(merged);
+  }, [serverMessages]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -84,20 +106,25 @@ export default function Simulator() {
     setIsSimulating(true);
   };
 
-  const sendMessage = async (text?: string) => {
+  const sendMessage = (text?: string) => {
     const msg = text || currentMessage;
     if (!msg.trim() || !phoneNumber) return;
 
-    const userMessage: SimulatedMessage = {
-      id: `user-${Date.now()}`,
+    // أضف الرسالة فوراً بشكل محلي (optimistic) — تختفي عند تأكيد الـ server
+    const optimisticMsg: SimulatedMessage = {
+      id: `opt-${Date.now()}`,
       direction: "inbound",
       content: msg,
       timestamp: new Date(),
     };
-    setMessages((prev) => [...prev, userMessage]);
+    optMsgsRef.current = [...optMsgsRef.current, optimisticMsg];
+    setMessages(prev => [...prev, optimisticMsg]);
     if (!text) setCurrentMessage("");
 
-    await simulateMessageMutation.mutateAsync({
+    setIsTyping(true); // أظهر نبض الكتابة
+
+    // fire-and-forget: الـ UI لا ينتظر — المحاكي يعمل مثل الواتساب الحقيقي
+    simulateMessageMutation.mutate({
       workspaceId: currentWorkspaceId,
       phone: phoneNumber,
       message: msg,
@@ -201,7 +228,7 @@ export default function Simulator() {
                 <button
                   key={qm.text}
                   onClick={() => sendMessage(qm.text)}
-                  disabled={!isSimulating || simulateMessageMutation.isPending}
+                disabled={!isSimulating}
                   className="w-full flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm text-right transition-colors hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <span>{qm.label}</span>
@@ -289,7 +316,7 @@ export default function Simulator() {
               ))
             )}
 
-            {simulateMessageMutation.isPending && (
+            {isTyping && (
               <div className="flex justify-start">
                 <div className="rounded-2xl rounded-tl-sm bg-white px-4 py-3 shadow-sm">
                   <div className="flex gap-1 items-center">
@@ -319,16 +346,16 @@ export default function Simulator() {
               onChange={(e) => setCurrentMessage(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={isSimulating ? "اكتب رسالتك..." : "ابدأ محادثة أولاً"}
-              disabled={!isSimulating || simulateMessageMutation.isPending}
+              disabled={!isSimulating}
               className="flex-1"
             />
             <Button
               onClick={() => sendMessage()}
-              disabled={!currentMessage.trim() || !isSimulating || simulateMessageMutation.isPending}
+              disabled={!currentMessage.trim() || !isSimulating}
               size="icon"
               className="shrink-0"
             >
-              {simulateMessageMutation.isPending ? (
+              {isTyping && !currentMessage ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Send className="h-4 w-4" />

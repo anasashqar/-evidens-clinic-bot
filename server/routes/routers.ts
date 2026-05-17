@@ -40,7 +40,15 @@ import {
   updateHandoffStatus,
   getOrCreateWorkspacePatient,         
   getActiveWorkspaceConversation,        
-  getLatestWorkspaceConversation,        
+  getLatestWorkspaceConversation,
+  // — Appointments —
+  createAppointment,
+  getWorkspaceAppointments,
+  getUpcomingWorkspaceAppointments,
+  updateAppointment,
+  updateAppointmentStatus,
+  deleteAppointment,
+  getAppointmentStats,
 } from "../db/workspace.queries";
 import {
   extractMessageFromWebhook,
@@ -291,13 +299,28 @@ export const appRouter = router({
       )
       .mutation(async ({ input }) => {
         try {
-          await handleIncomingMessage(
-            "",                    // instanceId فارغ — simulator يتخطى الـ lookup
+          // الـ simulator يستخدم الـ debouncer مثل الـ webhook الحقيقي تماماً
+          // هذا يُتيح اختبار سيناريو الرسائل المقطّعة في المحاكي
+          // ويمنع تعليق الـ UI طول فترة معالجة الـ LLM (5-8 ثانية)
+          debounceMessage(
+            `sim::${input.workspaceId}`,  // key منفصل عن الـ webhook الحقيقي
             input.phone,
             input.message,
-            true,                  // isSimulator = true
-            input.workspaceId      // ← workspaceId مباشر
+            undefined,                    // لا messageId في الـ simulator
+            async (combinedMessage, _, batchSize) => {
+              await handleIncomingMessage(
+                "",
+                input.phone,
+                combinedMessage,
+                true,
+                input.workspaceId,
+                undefined,
+                batchSize
+              );
+            }
           );
+
+          // يُرجع فوراً — الـ UI لا ينتظر الـ LLM
           return { success: true };
         } catch (error) {
           console.error("[Simulator] Error:", error);
@@ -343,6 +366,109 @@ export const appRouter = router({
         }
       }),
 
+  }),
+
+  // ─── Appointments ─────────────────────────────────────────────────────────────────────
+  appointments: router({
+
+    /** جميع مواعيد workspace */
+    list: adminProcedure
+      .input(z.object({ workspaceId: z.string().uuid() }))
+      .query(async ({ input }) => {
+        return await getWorkspaceAppointments(input.workspaceId);
+      }),
+
+    /** المواعيد القادمة فقط */
+    upcoming: adminProcedure
+      .input(z.object({ workspaceId: z.string().uuid() }))
+      .query(async ({ input }) => {
+        return await getUpcomingWorkspaceAppointments(input.workspaceId);
+      }),
+
+    /** إحصائيات المواعيد */
+    stats: adminProcedure
+      .input(z.object({ workspaceId: z.string().uuid() }))
+      .query(async ({ input }) => {
+        return await getAppointmentStats(input.workspaceId);
+      }),
+
+    /** إضافة موعد جديد */
+    create: adminProcedure
+      .input(
+        z.object({
+          workspaceId:      z.string().uuid(),
+          patientPhone:     z.string().min(5),
+          patientName:      z.string().optional(),
+          appointmentDate:  z.string(),   // ISO string
+          doctor:           z.string().optional(),
+          appointmentType:  z.string().optional(),
+          preferredPeriod:  z.string().optional(),
+          notes:            z.string().optional(),
+          conversationId:   z.string().uuid().optional(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        // جلب أو إنشاء المريض
+        const patient = await getOrCreateWorkspacePatient(input.workspaceId, input.patientPhone);
+        if (!patient) throw new Error("تعذر إنشاء سجل المريض");
+
+        return await createAppointment({
+          workspace_id:     input.workspaceId,
+          patient_id:       patient.id,
+          conversation_id:  input.conversationId ?? null,
+          appointment_date: new Date(input.appointmentDate),
+          doctor:           input.doctor ?? null,
+          appointment_type: input.appointmentType ?? null,
+          preferred_period: input.preferredPeriod ?? null,
+          notes:            input.notes ?? null,
+          status:           "scheduled",
+        });
+      }),
+
+    /** تحديث موعد */
+    update: adminProcedure
+      .input(
+        z.object({
+          appointmentId:   z.string().uuid(),
+          appointmentDate: z.string().optional(),
+          doctor:          z.string().optional(),
+          appointmentType: z.string().optional(),
+          preferredPeriod: z.string().optional(),
+          notes:           z.string().optional(),
+          status:          z.enum(["scheduled", "confirmed", "cancelled", "completed"]).optional(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const { appointmentId, appointmentDate, ...rest } = input;
+        return await updateAppointment(appointmentId, {
+          ...(appointmentDate ? { appointment_date: new Date(appointmentDate) } : {}),
+          ...(rest.doctor          !== undefined ? { doctor: rest.doctor }                   : {}),
+          ...(rest.appointmentType !== undefined ? { appointment_type: rest.appointmentType } : {}),
+          ...(rest.preferredPeriod !== undefined ? { preferred_period: rest.preferredPeriod } : {}),
+          ...(rest.notes           !== undefined ? { notes: rest.notes }                     : {}),
+          ...(rest.status          !== undefined ? { status: rest.status }                   : {}),
+        });
+      }),
+
+    /** تغيير حالة الموعد فقط */
+    updateStatus: adminProcedure
+      .input(
+        z.object({
+          appointmentId: z.string().uuid(),
+          status: z.enum(["scheduled", "confirmed", "cancelled", "completed"]),
+        })
+      )
+      .mutation(async ({ input }) => {
+        return await updateAppointmentStatus(input.appointmentId, input.status);
+      }),
+
+    /** حذف موعد */
+    delete: adminProcedure
+      .input(z.object({ appointmentId: z.string().uuid() }))
+      .mutation(async ({ input }) => {
+        await deleteAppointment(input.appointmentId);
+        return { success: true };
+      }),
   }),
 });
 

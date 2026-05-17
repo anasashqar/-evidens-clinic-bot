@@ -199,14 +199,33 @@ export const appointments = pgTable("appointments", {
     .references(() => workspaces.id, { onDelete: "cascade" })
     .notNull(),
   patient_id: uuid("patient_id").references(() => patients.id).notNull(),
+  conversation_id: uuid("conversation_id").references(() => conversations.id),
   appointment_date: timestamp("appointment_date").notNull(),
-  status: varchar("status", { length: 50 }).default("scheduled"),
+  status: varchar("status", { length: 50 }).default("scheduled"), // scheduled|confirmed|cancelled|completed
   doctor: varchar("doctor", { length: 255 }),
   appointment_type: varchar("appointment_type", { length: 50 }),
   preferred_period: varchar("preferred_period", { length: 255 }),
   notes: text("notes"),
+  // ─── تتبع إرسال التذكيرات ─────────────────────────────────────────────────
+  reminder_12h_sent: boolean("reminder_12h_sent").default(false).notNull(),
+  reminder_2h_sent:  boolean("reminder_2h_sent").default(false).notNull(),
   created_at: timestamp("created_at").defaultNow().notNull(),
   updated_at: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// ─── Re-Engagement Log ───────────────────────────────────────────────────────
+// سجل رسائل إعادة التفاعل مع المستخدمين الصامتين
+
+export const reEngagementLog = pgTable("re_engagement_log", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  workspace_id: uuid("workspace_id")
+    .references(() => workspaces.id, { onDelete: "cascade" })
+    .notNull(),
+  patient_id: uuid("patient_id").references(() => patients.id).notNull(),
+  conversation_id: uuid("conversation_id").references(() => conversations.id),
+  sent_at: timestamp("sent_at").defaultNow().notNull(),
+  message_text: text("message_text"),
+  created_at: timestamp("created_at").defaultNow().notNull(),
 });
 
 // ─── Inferred Types ───────────────────────────────────────────────────────────
@@ -232,3 +251,5 @@ export type InsertConversation = typeof conversations.$inferInsert;
 export type Message = typeof messages.$inferSelect;
 export type Handoff = typeof handoffs.$inferSelect;
 export type Appointment = typeof appointments.$inferSelect;
+export type InsertAppointment = typeof appointments.$inferInsert;
+export type ReEngagementLog = typeof reEngagementLog.$inferSelect;

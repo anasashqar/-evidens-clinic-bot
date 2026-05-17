@@ -8,7 +8,7 @@
  */
 
 import { db } from "./index";           // Drizzle instance
-import { eq, and, ne, desc, count, gte, lte } from "drizzle-orm";
+import { eq, and, ne, desc, count, gte, lte, lt, isNotNull } from "drizzle-orm";
 import {
   workspaces,
   workspaceZapiConfig,
@@ -18,12 +18,14 @@ import {
   messages,
   handoffs,
   appointments,
+  reEngagementLog,
   type Workspace,
   type WorkspaceZapiConfig,
   type WorkspaceBotSettings,
   type Patient,
   type Conversation,
   type InsertWorkspace,
+  type InsertAppointment,
 } from "../../drizzle/schema";
 
 // ─── Shared Type ──────────────────────────────────────────────────────────────
@@ -616,4 +618,109 @@ export async function getLatestHandoffForConversation(conversationId: string) {
     .orderBy(desc(handoffs.created_at))
     .limit(1);
   return rows[0] ?? null;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// APPOINTMENTS (workspace-scoped)
+// ═════════════════════════════════════════════════════════════════════════════
+
+/** إنشاء موعد جديد */
+export async function createAppointment(
+  data: Omit<InsertAppointment, "id" | "created_at" | "updated_at" | "reminder_12h_sent" | "reminder_2h_sent">
+) {
+  const created = await db.insert(appointments).values(data).returning();
+  return created[0];
+}
+
+/** جميع مواعيد workspace مع بيانات المريض */
+export async function getWorkspaceAppointments(workspaceId: string) {
+  return await db
+    .select({
+      appointment: appointments,
+      patient: patients,
+    })
+    .from(appointments)
+    .innerJoin(patients, eq(appointments.patient_id, patients.id))
+    .where(eq(appointments.workspace_id, workspaceId))
+    .orderBy(desc(appointments.appointment_date));
+}
+
+/** المواعيد القادمة (المستقبلية فقط) */
+export async function getUpcomingWorkspaceAppointments(workspaceId: string) {
+  const now = new Date();
+  return await db
+    .select({
+      appointment: appointments,
+      patient: patients,
+    })
+    .from(appointments)
+    .innerJoin(patients, eq(appointments.patient_id, patients.id))
+    .where(
+      and(
+        eq(appointments.workspace_id, workspaceId),
+        gte(appointments.appointment_date, now)
+      )
+    )
+    .orderBy(appointments.appointment_date);
+}
+
+/** تحديث حالة الموعد */
+export async function updateAppointmentStatus(
+  appointmentId: string,
+  status: "scheduled" | "confirmed" | "cancelled" | "completed"
+) {
+  const updated = await db
+    .update(appointments)
+    .set({ status, updated_at: new Date() })
+    .where(eq(appointments.id, appointmentId))
+    .returning();
+  return updated[0];
+}
+
+/** تحديث بيانات الموعد */
+export async function updateAppointment(
+  appointmentId: string,
+  data: Partial<Pick<InsertAppointment, "appointment_date" | "status" | "doctor" | "appointment_type" | "notes" | "preferred_period">>
+) {
+  const updated = await db
+    .update(appointments)
+    .set({ ...data, updated_at: new Date() })
+    .where(eq(appointments.id, appointmentId))
+    .returning();
+  return updated[0];
+}
+
+/** حذف موعد */
+export async function deleteAppointment(appointmentId: string) {
+  await db.delete(appointments).where(eq(appointments.id, appointmentId));
+}
+
+/** مواعيد مريض معين */
+export async function getPatientAppointments(patientId: string) {
+  return await db
+    .select()
+    .from(appointments)
+    .where(eq(appointments.patient_id, patientId))
+    .orderBy(desc(appointments.appointment_date));
+}
+
+/** إحصائيات المواعيد لـ workspace */
+export async function getAppointmentStats(workspaceId: string) {
+  const now = new Date();
+  const todayStart = new Date(now); todayStart.setHours(0,0,0,0);
+  const todayEnd   = new Date(now); todayEnd.setHours(23,59,59,999);
+
+  const [total, upcoming, todayAppts, cancelled] = await Promise.all([
+    db.select({ value: count() }).from(appointments).where(eq(appointments.workspace_id, workspaceId)),
+    db.select({ value: count() }).from(appointments).where(and(eq(appointments.workspace_id, workspaceId), gte(appointments.appointment_date, now), ne(appointments.status as any, 'cancelled'))),
+    db.select({ value: count() }).from(appointments).where(and(eq(appointments.workspace_id, workspaceId), gte(appointments.appointment_date, todayStart), lte(appointments.appointment_date, todayEnd))),
+    db.select({ value: count() }).from(appointments).where(and(eq(appointments.workspace_id, workspaceId), eq(appointments.status as any, 'cancelled'))),
+  ]);
+
+  return {
+    total:     total[0]?.value ?? 0,
+    upcoming:  upcoming[0]?.value ?? 0,
+    today:     todayAppts[0]?.value ?? 0,
+    cancelled: cancelled[0]?.value ?? 0,
+  };
 }

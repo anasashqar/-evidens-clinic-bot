@@ -10,6 +10,7 @@ import BotSettings from "./pages/BotSettings";
 import Dashboard from "./pages/Dashboard";
 import Workspaces from "./pages/Workspaces";
 import Simulator from "./pages/Simulator";
+import Appointments from "./pages/Appointments";
 
 function Router() {
   const [location] = useLocation();
@@ -23,6 +24,7 @@ function Router() {
           <Route path={"/workspaces"} component={Workspaces} />
           <Route path={"/simulator"} component={Simulator} />
           <Route path={"/workspace/:workspaceId/settings"} component={BotSettings} />
+          <Route path={"/workspace/:workspaceId/appointments"} component={Appointments} />
           <Route path={"/404"} component={NotFound} />
           <Route component={NotFound} />
         </Switch>

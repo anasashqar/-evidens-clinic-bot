@@ -341,8 +341,8 @@ async function processWithAI(
       metadata: {},
     });
 
-    // بناء تاريخ المحادثة للـ LLM
-    const conversationHistory = dbHistory.map((msg) => ({
+    // بناء تاريخ المحادثة للـ LLM (محدود بـ MAX_HISTORY)
+    const conversationHistory = llmHistory.map((msg) => ({
       role: (msg.direction === "inbound" ? "user" : "assistant") as "user" | "assistant",
       content: msg.content,
     }));

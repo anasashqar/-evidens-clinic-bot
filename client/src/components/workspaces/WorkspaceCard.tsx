@@ -7,7 +7,7 @@ import {
   CardHeader,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Settings, MessageSquare, CheckCircle2, AlertCircle } from "lucide-react";
+import { Settings, MessageSquare, CheckCircle2, AlertCircle, CalendarDays } from "lucide-react";
 
 export function WorkspaceCard({ row, onRefresh, typeInfo }: { row: any; onRefresh: () => void; typeInfo: any }) {
   const [, setLocation] = useLocation();
@@ -144,10 +144,10 @@ export function WorkspaceCard({ row, onRefresh, typeInfo }: { row: any; onRefres
             variant="outline"
             size="sm"
             className="flex-1 h-8 text-xs"
-            onClick={() => setLocation("/dashboard")}
+            onClick={() => setLocation(`/workspace/${workspace.id}/appointments`)}
           >
-            <MessageSquare className="h-3.5 w-3.5 ml-1.5" />
-            المحادثات
+            <CalendarDays className="h-3.5 w-3.5 ml-1.5" />
+            المواعيد
           </Button>
         </div>
       </CardContent>
