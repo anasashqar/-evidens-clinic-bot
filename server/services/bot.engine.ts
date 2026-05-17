@@ -731,34 +731,40 @@ async function performHandoff(
   });
 
   // ─── إنشاء موعد تلقائي في لوحة التحكم ────────────────────────────────────
-  // نُنشئ موعداً بتاريخ placeholder (7 أيام) حتى يظهر في الداشبورد فوراً
-  // المنسق يعدّل التاريخ الحقيقي → علامات التذكير تُعاد تلقائياً وتُرسل للموعد الجديد
   try {
-    const placeholderDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const preferredPeriod = (ctx.preferred_period as string) ?? null;
+    const parsedDate      = preferredPeriod ? parseDateFromText(preferredPeriod) : null;
+    const isPlaceholder   = !parsedDate;
+    const appointmentDate = parsedDate ?? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
     await createAppointment({
-      workspace_id:     workspace.id,
-      patient_id:       context.patient.id,
-      conversation_id:  context.conversation.id,
-      appointment_date: placeholderDate,
-      status:           "scheduled",
-      appointment_type: (ctx.concern as string) ?? null,
-      preferred_period: (ctx.preferred_period as string) ?? null,
-      // تعطيل التذكيرات للتاريخ placeholder — تُفعّل عند تحديث التاريخ الحقيقي
-      reminder_12h_sent: true,
-      reminder_2h_sent:  true,
+      workspace_id:      workspace.id,
+      patient_id:        context.patient.id,
+      conversation_id:   context.conversation.id,
+      appointment_date:  appointmentDate,
+      status:            "scheduled",
+      appointment_type:  (ctx.concern as string)         ?? null,
+      preferred_period:  preferredPeriod,
+      // إذا حلّلنا التاريخ بدقة → فعّل التذكيرات فوراً
+      // إذا كان placeholder  → عطّلها حتى يحدد المنسق التاريخ الحقيقي
+      reminder_12h_sent: isPlaceholder,
+      reminder_2h_sent:  isPlaceholder,
       notes: [
         `تم الحجز عبر البوت تلقائياً.`,
-        (ctx.preferred_period as string)
-          ? `• الوقت المفضّل: ${ctx.preferred_period as string}`
-          : "",
+        preferredPeriod ? `• الوقت المفضّل: ${preferredPeriod}` : "",
         (ctx.is_urgent as boolean) ? `• ⚡ حالة مستعجلة` : "",
-        `⏳ يحتاج تأكيد التاريخ والوقت الدقيق من المنسق`,
+        isPlaceholder
+          ? `⏳ لم نتمكن من تحليل التاريخ — يحتاج تأكيد الوقت الدقيق من المنسق`
+          : `✅ تم تحليل التاريخ تلقائياً من: "${preferredPeriod}"`,
       ].filter(Boolean).join("\n"),
     });
-    console.log(`[BotEngine][${workspace.slug}] 📅 Draft appointment created for ${context.patient.phone}`);
+
+    console.log(
+      `[BotEngine][${workspace.slug}] 📅 Appointment created for ${context.patient.phone}` +
+      (isPlaceholder ? " [placeholder — awaiting coordinator]" : ` [parsed: ${appointmentDate.toISOString()}]`)
+    );
   } catch (err) {
-    // لا نوقف المحادثة إذا فشل إنشاء الموعد
-    console.error(`[BotEngine][${workspace.slug}] Failed to create draft appointment:`, err);
+    console.error(`[BotEngine][${workspace.slug}] Failed to create appointment:`, err);
   }
 
   // أشعر المنسق (في الإنتاج فقط)
@@ -880,8 +886,91 @@ async function sendBotMessage(
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+// DATE PARSER — Arabic / Gazan Dialect
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * يحلّل التاريخ من نص الوقت المفضل باللهجة العربية/الغزاوية
+ *
+ * السيناريوهات المدعومة:
+ *   "اليوم"              → اليوم
+ *   "بكرة / غداً"        → الغد
+ *   "كمان يومين"         → بعد يومين
+ *   "كمان 3 أيام"        → بعد 3 أيام
+ *   "الجمعة"             → أقرب جمعة قادمة
+ *   "الجمعة المسا"       → أقرب جمعة مساءً
+ *   "الأسبوع القادم"     → بعد 7 أيام
+ *   "نهاية الأسبوع"      → أقرب جمعة
+ *
+ * يعود بـ Date أو null إذا لم يتمكن من التحليل
+ */
+function parseDateFromText(text: string): Date | null {
+  if (!text?.trim()) return null;
+  const t = text.trim();
+
+  // ─── استخراج الساعة من النص ────────────────────────────────────────────────
+  const getHour = (): number => {
+    if (/صبح|صباح/.test(t))           return 9;
+    if (/ظهر/.test(t))                return 12;
+    if (/عصر/.test(t))                return 15;
+    if (/مسا|مساء|عصري|بعد الظهر/.test(t)) return 17;
+    if (/ليل|ليلة/.test(t))           return 19;
+    return 10; // افتراضي: 10 صباحاً
+  };
+  const hour = getHour();
+
+  // Helper: يبني تاريخاً بعد عدد أيام محدد
+  const inDays = (n: number): Date => {
+    const d = new Date();
+    d.setDate(d.getDate() + n);
+    d.setHours(hour, 0, 0, 0);
+    return d;
+  };
+
+  // Helper: أقرب يوم أسبوع قادم (0=الأحد ... 6=السبت)
+  const nextWeekday = (target: number): Date => {
+    const d = new Date();
+    const diff = (target - d.getDay() + 7) % 7 || 7;
+    d.setDate(d.getDate() + diff);
+    d.setHours(hour, 0, 0, 0);
+    return d;
+  };
+
+  // ─── اليوم ─────────────────────────────────────────────────────────────────
+  if (/اليوم|هلق|هلأ|الحين/.test(t))           return inDays(0);
+
+  // ─── الغد ──────────────────────────────────────────────────────────────────
+  if (/بكرة|بكره|غداً|غدا\b/.test(t))          return inDays(1);
+
+  // ─── أيام بالأرقام: "كمان 3 أيام" / "بعد 4 أيام" ──────────────────────────
+  const numMatch = t.match(/(?:كمان|بعد)\s+(\d+)\s*أيام?/);
+  if (numMatch) {
+    const n = parseInt(numMatch[1]);
+    if (n > 0 && n <= 30) return inDays(n);
+  }
+
+  // ─── أيام بالكلمات ─────────────────────────────────────────────────────────
+  if (/كمان يومين|بعد يومين/.test(t))               return inDays(2);
+  if (/كمان ثلاثة?|بعد ثلاثة? أيام?/.test(t))       return inDays(3);
+  if (/كمان أسبوع|بعد أسبوع|الأسبوع القادم|الأسبوع الجاي/.test(t)) return inDays(7);
+  if (/نهاية الأسبوع|آخر الأسبوع|ويكند/.test(t))    return nextWeekday(5); // جمعة
+
+  // ─── أيام الأسبوع ──────────────────────────────────────────────────────────
+  if (/الأحد|أحد/.test(t))      return nextWeekday(0);
+  if (/الاثنين|اثنين/.test(t))  return nextWeekday(1);
+  if (/الثلاثاء|ثلاثاء/.test(t)) return nextWeekday(2);
+  if (/الأربعاء|أربعاء/.test(t)) return nextWeekday(3);
+  if (/الخميس|خميس/.test(t))    return nextWeekday(4);
+  if (/الجمعة|جمعة/.test(t))    return nextWeekday(5);
+  if (/السبت|سبت/.test(t))      return nextWeekday(6);
+
+  return null; // لم نتمكن من التحليل → placeholder
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 // APPOINTMENT REPLY HANDLING
 // ═════════════════════════════════════════════════════════════════════════════
+
 
 const CANCEL_KEYWORDS = [
   "إلغاء", "الغاء", "إلغي", "ألغي", "ملغي",
