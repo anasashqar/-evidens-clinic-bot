@@ -23,7 +23,7 @@ import { APP_LOGO, APP_TITLE, getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
 import { LayoutDashboard, Bot, Building2, LogOut, PanelLeft, ChevronLeft, Activity } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
-import { useLocation } from "wouter";
+import { useLocation, useRoute } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
@@ -128,6 +128,16 @@ function DashboardLayoutContent({
   const sidebarRef = useRef<HTMLDivElement>(null);
   const activeMenuItem = menuItems.find(item => item.path === location);
   const isMobile = useIsMobile();
+
+  const [matchWorkspaceSettings] = useRoute("/workspace/:workspaceId/settings");
+  const [matchWorkspaceAppointments] = useRoute("/workspace/:workspaceId/appointments");
+
+  let pageTitle = activeMenuItem?.label;
+  if (!pageTitle) {
+    if (matchWorkspaceSettings) pageTitle = "إعدادات البوت";
+    else if (matchWorkspaceAppointments) pageTitle = "المواعيد";
+    else pageTitle = "الصفحة الحالية";
+  }
 
   useEffect(() => {
     if (isCollapsed) {
@@ -289,7 +299,7 @@ function DashboardLayoutContent({
             {/* Page Title */}
             <div>
               <h1 className="text-xl font-bold tracking-tight text-foreground">
-                {activeMenuItem?.label ?? "الصفحة الحالية"}
+                {pageTitle}
               </h1>
             </div>
             

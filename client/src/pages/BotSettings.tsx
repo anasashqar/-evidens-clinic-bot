@@ -30,6 +30,7 @@ import {
   AlertCircle,
   ArrowRight,
   Loader2,
+  Menu,
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
@@ -830,6 +831,9 @@ export default function BotSettings() {
     return <PageSkeleton />;
   }
 
+  const [activeTab, setActiveTab] = useState("zapi");
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
   if (!workspaceRow) {
     return (
       <PageTransition className="flex flex-col items-center justify-center py-32 gap-4" dir="rtl">
@@ -911,47 +915,103 @@ export default function BotSettings() {
         </div>
       </div>
 
-      {/* Tabs */}
-      <Tabs defaultValue="zapi">
-        <TabsList className="grid w-full grid-cols-4">
-          {tabs.map((tab) => (
-            <TabsTrigger key={tab.id} value={tab.id} className="gap-1.5 text-xs sm:text-sm">
-              <tab.icon className="h-4 w-4" />
-              <span className="hidden sm:inline">{tab.label}</span>
-              {tab.id !== "simulator" && (
-                <span
-                  className={`h-1.5 w-1.5 rounded-full ${
-                    tab.done ? "bg-green-500" : "bg-amber-400"
-                  }`}
+      <div className="flex flex-col md:flex-row gap-4 mt-6">
+        {/* Sidebar Navigation */}
+        <div 
+          className={`shrink-0 transition-all duration-300 ease-in-out flex flex-col bg-card rounded-xl border border-border/50 shadow-sm ${
+            isSidebarOpen ? "w-full md:w-52" : "w-full md:w-16"
+          }`}
+        >
+          {/* Toggle Header (Desktop Only) */}
+          <div className="p-2 border-b border-border/50 hidden md:flex items-center justify-between">
+            <span 
+              className={`text-xs font-semibold px-2 text-muted-foreground transition-opacity duration-200 whitespace-nowrap ${
+                isSidebarOpen ? "opacity-100" : "opacity-0 w-0 overflow-hidden"
+              }`}
+            >
+              القائمة
+            </span>
+            <button
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              className="p-1.5 rounded-md hover:bg-muted text-muted-foreground transition-colors mx-auto md:mx-0 shrink-0"
+              title={isSidebarOpen ? "تصغير القائمة" : "توسيع القائمة"}
+            >
+              <Menu className="h-4 w-4" />
+            </button>
+          </div>
+
+          <nav className="flex flex-col gap-1 p-2">
+            {tabs.map((tab) => {
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 overflow-hidden relative ${
+                    isActive
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  } ${!isSidebarOpen ? "md:justify-center md:px-0" : ""}`}
+                  title={!isSidebarOpen ? tab.label : undefined}
+                >
+                  <tab.icon className={`h-4 w-4 shrink-0 ${isActive ? "text-primary-foreground" : "text-muted-foreground"}`} />
+                  
+                  <span 
+                    className={`whitespace-nowrap transition-all duration-300 ${
+                      isSidebarOpen ? "opacity-100 w-auto" : "md:opacity-0 md:w-0 md:hidden"
+                    }`}
+                  >
+                    {tab.label}
+                  </span>
+
+                  {tab.id !== "simulator" && (
+                    <span
+                      className={`shrink-0 h-2 w-2 rounded-full transition-all ${
+                        isSidebarOpen ? "mr-auto" : "md:absolute md:top-2 md:left-2"
+                      } ${
+                        tab.done 
+                          ? isActive ? "bg-primary-foreground/80" : "bg-green-500" 
+                          : isActive ? "bg-primary-foreground/30" : "bg-amber-400"
+                      }`}
+                    />
+                  )}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+
+        {/* Content Area */}
+        <div className="flex-1 rounded-xl border-0 shadow-sm ring-1 ring-border bg-card p-6 overflow-hidden min-h-[500px]">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+            >
+              {activeTab === "zapi" && (
+                <ZApiTab workspaceId={workspace.id} initial={zapiConfig ?? undefined} />
+              )}
+              {activeTab === "prompt" && (
+                <PromptTab
+                  workspaceId={workspace.id}
+                  businessType={workspace.business_type}
+                  initial={botSettings ?? undefined}
+                  businessName={workspace.name}
                 />
               )}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-
-        <div className="mt-4 rounded-xl border-0 shadow-sm ring-1 ring-border bg-card p-6 overflow-hidden">
-          <TabsContent value="zapi" className="mt-0">
-            <ZApiTab workspaceId={workspace.id} initial={zapiConfig ?? undefined} />
-          </TabsContent>
-
-          <TabsContent value="prompt" className="mt-0">
-            <PromptTab
-              workspaceId={workspace.id}
-              businessType={workspace.business_type}
-              initial={botSettings ?? undefined}
-              businessName={workspace.name}
-            />
-          </TabsContent>
-
-          <TabsContent value="handoff" className="mt-0">
-            <HandoffTab workspaceId={workspace.id} initial={botSettings ?? undefined} />
-          </TabsContent>
-
-          <TabsContent value="simulator" className="mt-0">
-            <SimulatorTab workspaceId={workspace.id} />
-          </TabsContent>
+              {activeTab === "handoff" && (
+                <HandoffTab workspaceId={workspace.id} initial={botSettings ?? undefined} />
+              )}
+              {activeTab === "simulator" && (
+                <SimulatorTab workspaceId={workspace.id} />
+              )}
+            </motion.div>
+          </AnimatePresence>
         </div>
-      </Tabs>
+      </div>
     </PageTransition>
   );
 }
