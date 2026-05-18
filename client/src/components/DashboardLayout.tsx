@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/sidebar";
 import { APP_LOGO, APP_TITLE, getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, Bot, Building2, LogOut, PanelLeft, ChevronLeft, Activity } from "lucide-react";
+import { Bot, LogOut, PanelLeft, Activity } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation, useRoute } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
@@ -29,9 +29,8 @@ import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
 import { Button } from "./ui/button";
 
 const menuItems = [
-  { icon: LayoutDashboard, label: "لوحة التحكم",   path: "/" },
-  { icon: Bot,             label: "البوتات",         path: "/workspaces" },
-  { icon: Activity,        label: "التجربة والاختبار", path: "/simulator" },
+  { icon: Bot,      label: "البوتات",           path: "/" },
+  { icon: Activity, label: "التجربة والاختبار", path: "/simulator" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -126,15 +125,20 @@ function DashboardLayoutContent({
   const isCollapsed = state === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
-  const activeMenuItem = menuItems.find(item => item.path === location);
+  const isHome = location === "/" || location === "/workspaces";
+  const activeMenuItem = menuItems.find(item =>
+    item.path === "/" ? isHome : item.path === location
+  );
   const isMobile = useIsMobile();
 
+  const [matchWorkspaceDashboard] = useRoute("/workspace/:workspaceId/dashboard");
   const [matchWorkspaceSettings] = useRoute("/workspace/:workspaceId/settings");
   const [matchWorkspaceAppointments] = useRoute("/workspace/:workspaceId/appointments");
 
   let pageTitle = activeMenuItem?.label;
   if (!pageTitle) {
-    if (matchWorkspaceSettings) pageTitle = "إعدادات البوت";
+    if (matchWorkspaceDashboard) pageTitle = "لوحة التحكم";
+    else if (matchWorkspaceSettings) pageTitle = "إعدادات البوت";
     else if (matchWorkspaceAppointments) pageTitle = "المواعيد";
     else pageTitle = "الصفحة الحالية";
   }

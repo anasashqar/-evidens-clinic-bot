@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { trpc } from "../lib/trpc";
-import { useLocation } from "wouter";
+import { useLocation, useRoute } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Card,
@@ -17,13 +17,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Table,
   TableBody,
   TableCell,
@@ -33,7 +26,6 @@ import {
 } from "@/components/ui/table";
 import {
   MessageSquare,
-  Users,
   Clock,
   Activity,
   Settings,
@@ -41,6 +33,7 @@ import {
   ChevronRight,
   Bell,
   X,
+  ArrowRight,
 } from "lucide-react";
 
 import { StatusBadge } from "../components/dashboard/StatusBadge";
@@ -63,7 +56,9 @@ export const STEP_LABELS: Record<string, string> = {
 
 export default function Dashboard() {
   const [, navigate] = useLocation();
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>("");
+  const [, params] = useRoute("/workspace/:workspaceId/dashboard");
+  const workspaceId = params?.workspaceId ?? "";
+
   const [activeTab, setActiveTab] = useState<"handoffs" | "conversations">("handoffs");
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
   const [notification, setNotification] = useState<string | null>(null);
@@ -72,14 +67,6 @@ export default function Dashboard() {
   // ── Data fetching ──────────────────────────────────────────────────────────
 
   const { data: workspaces, isLoading: wsLoading } = trpc.admin.workspaces.useQuery(undefined);
-
-  useEffect(() => {
-    if (workspaces?.length && !selectedWorkspaceId) {
-      setSelectedWorkspaceId(workspaces[0].workspace.id);
-    }
-  }, [workspaces]);
-
-  const workspaceId = selectedWorkspaceId || (workspaces?.[0]?.workspace?.id ?? "");
 
   const { data: metrics, isLoading: metricsLoading } = trpc.admin.workspaceMetrics.useQuery(
     { workspaceId },
@@ -100,37 +87,42 @@ export default function Dashboard() {
     onSuccess: () => refetchHandoffs(),
   });
 
+  const currentWs = workspaces?.find((w: any) => w.workspace.id === workspaceId);
+
   // ── Realtime notification ────────────────────────────────────────────────
   useEffect(() => {
     const pending = handoffs?.filter((r: any) => r.handoff.status === "pending").length ?? 0;
-
     if (pending > prevPendingCount.current && prevPendingCount.current !== -1) {
       const newest = handoffs?.find((r: any) => r.handoff.status === "pending");
       const name = newest?.patient?.name || newest?.patient?.phone || "عميل";
       setNotification(`طلب جديد من ${name} — يحتاج متابعة`);
-
       try {
         const ctx = new AudioContext();
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
+        osc.connect(gain); gain.connect(ctx.destination);
         osc.frequency.value = 520;
         gain.gain.setValueAtTime(0.3, ctx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + 0.4);
+        osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.4);
       } catch {}
-
       setTimeout(() => setNotification(null), 6000);
     }
-
     prevPendingCount.current = pending;
   }, [handoffs]);
 
-  const currentWs = workspaces?.find((w: any) => w.workspace.id === workspaceId);
+  if (!workspaceId) {
+    return (
+      <PageTransition className="flex flex-col items-center justify-center h-64 gap-4" dir="rtl">
+        <p className="text-muted-foreground">البوت غير موجود</p>
+        <button onClick={() => navigate("/")} className="text-sm text-primary underline">
+          العودة للقائمة
+        </button>
+      </PageTransition>
+    );
+  }
 
-  if (wsLoading || (workspaces?.length && metricsLoading && !metrics)) {
+  if (metricsLoading && !metrics) {
     return <PageSkeleton />;
   }
 
@@ -164,41 +156,38 @@ export default function Dashboard() {
 
       {/* Page Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">لوحة التحكم</h1>
-          {currentWs && (
-            <p className="text-sm text-muted-foreground mt-0.5">
-              {currentWs.workspace.name}
-            </p>
-          )}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => navigate("/")}
+            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowRight className="h-4 w-4" />
+            البوتات
+          </button>
+          <span className="text-muted-foreground/40">/</span>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">{currentWs?.workspace?.name ?? "لوحة التحكم"}</h1>
+            <p className="text-xs text-muted-foreground mt-0.5">{currentWs?.workspace?.slug}</p>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Workspace Selector */}
-          {!wsLoading && workspaces && workspaces.length > 1 && (
-            <Select value={workspaceId} onValueChange={setSelectedWorkspaceId}>
-              <SelectTrigger className="w-48">
-                <SelectValue placeholder="اختر العميل" />
-              </SelectTrigger>
-              <SelectContent>
-                {workspaces.map((w: any) => (
-                  <SelectItem key={w.workspace.id} value={w.workspace.id}>
-                    {w.workspace.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-
           {workspaceId && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => navigate(`/workspace/${workspaceId}/settings`)}
-            >
-              <Settings className="h-4 w-4 ml-1.5" />
-              الإعدادات
-            </Button>
+            <>
+              <button
+                onClick={() => navigate(`/workspace/${workspaceId}/appointments`)}
+                className="flex items-center gap-1.5 text-sm border rounded-lg px-3 py-1.5 hover:bg-accent transition-colors"
+              >
+                المواعيد
+              </button>
+              <button
+                onClick={() => navigate(`/workspace/${workspaceId}/settings`)}
+                className="flex items-center gap-1.5 text-sm border rounded-lg px-3 py-1.5 hover:bg-accent transition-colors"
+              >
+                <Settings className="h-4 w-4" />
+                الإعدادات
+              </button>
+            </>
           )}
         </div>
       </div>

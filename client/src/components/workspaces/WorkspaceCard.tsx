@@ -7,7 +7,7 @@ import {
   CardHeader,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Settings, MessageSquare, CheckCircle2, AlertCircle, CalendarDays } from "lucide-react";
+import { LayoutDashboard, Settings, CheckCircle2, AlertCircle, CalendarDays } from "lucide-react";
 
 export function WorkspaceCard({ row, onRefresh, typeInfo }: { row: any; onRefresh: () => void; typeInfo: any }) {
   const [, setLocation] = useLocation();
@@ -131,24 +131,35 @@ export function WorkspaceCard({ row, onRefresh, typeInfo }: { row: any; onRefres
         )}
 
         {/* Actions */}
-        <div className="flex gap-2">
+        <div className="space-y-2">
           <Button
             size="sm"
-            className="flex-1 h-8 text-xs"
-            onClick={() => setLocation(`/workspace/${workspace.id}/settings`)}
+            className="w-full h-8 text-xs"
+            onClick={() => setLocation(`/workspace/${workspace.id}/dashboard`)}
           >
-            <Settings className="h-3.5 w-3.5 ml-1.5" />
-            الإعدادات
+            <LayoutDashboard className="h-3.5 w-3.5 ml-1.5" />
+            لوحة التحكم
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="flex-1 h-8 text-xs"
-            onClick={() => setLocation(`/workspace/${workspace.id}/appointments`)}
-          >
-            <CalendarDays className="h-3.5 w-3.5 ml-1.5" />
-            المواعيد
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 h-8 text-xs"
+              onClick={() => setLocation(`/workspace/${workspace.id}/settings`)}
+            >
+              <Settings className="h-3.5 w-3.5 ml-1.5" />
+              الإعدادات
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 h-8 text-xs"
+              onClick={() => setLocation(`/workspace/${workspace.id}/appointments`)}
+            >
+              <CalendarDays className="h-3.5 w-3.5 ml-1.5" />
+              المواعيد
+            </Button>
+          </div>
         </div>
       </CardContent>
     </Card>

@@ -7,7 +7,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import DashboardLayout from "./components/DashboardLayout";
 import BotSettings from "./pages/BotSettings";
-import Dashboard from "./pages/Dashboard";
+import BotDashboard from "./pages/Dashboard";
 import Workspaces from "./pages/Workspaces";
 import Simulator from "./pages/Simulator";
 import Appointments from "./pages/Appointments";
@@ -19,12 +19,12 @@ function Router() {
     <DashboardLayout>
       <AnimatePresence mode="wait">
         <Switch location={location} key={location}>
-          <Route path={"/"} component={Dashboard} />
-          <Route path={"/dashboard"} component={Dashboard} />
+          <Route path={"/"} component={Workspaces} />
           <Route path={"/workspaces"} component={Workspaces} />
-          <Route path={"/simulator"} component={Simulator} />
+          <Route path={"/workspace/:workspaceId/dashboard"} component={BotDashboard} />
           <Route path={"/workspace/:workspaceId/settings"} component={BotSettings} />
           <Route path={"/workspace/:workspaceId/appointments"} component={Appointments} />
+          <Route path={"/simulator"} component={Simulator} />
           <Route path={"/404"} component={NotFound} />
           <Route component={NotFound} />
         </Switch>
